@@ -2,10 +2,9 @@
 Pillow>=10.0.0
 numpy>=1.24.0
 
-# CLI & TUI
+# CLI
 typer[all]>=0.9.0
 rich>=13.0.0
-textual>=0.40.0,<1.0
 
 # Web UI (NiceGUI - modern alternative to Streamlit)
 nicegui>=1.4.0

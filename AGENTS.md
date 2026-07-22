@@ -32,7 +32,7 @@ Rule of thumb: CLI first for context hygiene, MCP for inline reasoning.
 - `transforms_core.py` — pure text transforms (zalgo, leetspeak, fullwidth) for pre-obfuscation
 - `crypto.py` — optional AES-256-GCM
 - `cli.py`, `stegg_cli.py` — main CLI + subprocess-friendly JSON CLI
-- `tui.py`, `webui.py` — optional Textual + NiceGUI UIs
+- `webui.py` — optional NiceGUI UI
 - `st3ggmcp/` — HTTP MCP server package
   - `server.py` — ASGI app + entry point
   - `tools/` — per-family tool modules (`image`, `text`, `triage`, `meta`), each colocating executors with their JSON schemas
@@ -47,7 +47,7 @@ Rule of thumb: CLI first for context hygiene, MCP for inline reasoning.
 ```bash
 pip install -e .              # core CLI
 pip install -e '.[mcp]'       # + HTTP MCP server
-pip install -e '.[all]'       # everything (TUI, web, crypto, MCP)
+pip install -e '.[all]'       # everything (web, crypto, MCP)
 ```
 
 ## Tests

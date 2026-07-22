@@ -41,8 +41,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Terminal UI (Textual)
-tui = ["textual>=0.40.0,<1.0"]
 # Web UI (NiceGUI + FastAPI)
 web = ["nicegui>=1.4.0", "fastapi>=0.100.0"]
 # Legacy web UI (Streamlit)
@@ -57,7 +55,6 @@ mcp = [
 ]
 # Everything
 all = [
-    "textual>=0.40.0,<1.0",
     "nicegui>=1.4.0",
     "fastapi>=0.100.0",
     "streamlit>=1.28.0",
@@ -69,7 +66,6 @@ all = [
 
 [project.scripts]
 stegg = "cli:main_cli"
-stegg-tui = "tui:main"
 stegg-web = "webui:main"
 stegg-cli = "stegg_cli:main"
 stegg-mcp = "st3ggmcp.server:main"
@@ -82,7 +78,7 @@ Documentation = "https://github.com/elder-plinius/st3gg#readme"
 Issues = "https://github.com/elder-plinius/st3gg/issues"
 
 [tool.setuptools]
-py-modules = ["img_core", "crypto", "analysis_tools", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "tui", "webui", "app", "transforms_core", "ascii_art", "stegg_cli"]
+py-modules = ["img_core", "crypto", "analysis_tools", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "stegg_cli"]
 packages = ["st3ggmcp"]
 
 [tool.setuptools.package-data]

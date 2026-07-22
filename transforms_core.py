@@ -3,7 +3,7 @@
 These are NOT stego methods. They transform a string into a different string
 in a reversible (or at least recoverable) way. Used by jailbreak composition
 for pre-obfuscation (see ``compose_text_jailbreak`` /
-``compose_unicode_tag_jailbreak``) and by the CLI/TUI for user-facing text
+``compose_unicode_tag_jailbreak``) and by the CLI for user-facing text
 effects.
 
 Transport survivability
