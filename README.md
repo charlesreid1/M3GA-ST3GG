@@ -49,7 +49,7 @@
 
 [STE.GG](https://ste.gg)‍​‌​‌​​​​​‌​​‌‌​​​‌​​‌​​‌​‌​​‌‌‌​​‌​‌‌​​‌​​‌​​​​​​‌​​‌‌​​​‌​​‌‌‌‌​‌​‌​‌‌​​‌​​​‌​‌​‌​‌​​‌‌​​‌​​​​​​‌​‌‌​​‌​‌​​‌‌‌‌​‌​‌​‌​‌‍ is a feature-rich, open-source steganography toolkit that hides secret data inside images, audio, documents, network packets, and more — using **100+ encoding techniques** across every file format imaginable.
 
-It runs **100% in your browser** (static site, no server) or as a **Python CLI/TUI/WebUI**. No data ever leaves your machine. Every technique that encodes also decodes. Every attack surface is also a detection surface.
+It runs **100% in your browser** (static site, no server) or as a **Python CLI/WebUI**. No data ever leaves your machine. Every technique that encodes also decodes. Every attack surface is also a detection surface.
 
 > *⊰•-•✧ Some secrets are hidden in plain sight ✧•-•⊱*
 
@@ -282,7 +282,6 @@ stegg encode image.png "{SPECTER:ENABLED}" -o stego.png
 ### Install with extras
 
 ```bash
-pip install stegg[tui]      # Terminal UI (Textual)
 pip install stegg[web]      # Web UI (NiceGUI)
 pip install stegg[crypto]   # AES-256-GCM encryption
 pip install stegg[mcp]      # MCP server for AI agents
@@ -309,9 +308,8 @@ pip install -e ".[all]"
 ### Interfaces
 
 ```bash
-stegg --help          # Interactive CLI (Rich TUI output)
+stegg --help          # Interactive CLI (Rich output)
 stegg-cli --help      # Agent CLI (JSON output, subprocess-friendly)
-stegg-tui             # Terminal UI (requires: pip install stegg[tui])
 stegg-web             # Browser UI (requires: pip install stegg[web])
 stegg-mcp             # MCP server for AI agents (requires: pip install stegg[mcp])
 ```
@@ -398,7 +396,6 @@ ST3GG/
 ├── crypto.py               # AES-256-GCM + XOR encryption
 ├── analysis_tools.py       # 20+ detection & analysis functions
 ├── cli.py                  # Command-line interface
-├── tui.py                  # Terminal UI (Textual)
 ├── webui.py                # Web UI (NiceGUI)
 ├── app.py                  # Core application logic
 ├── transforms_core.py      # Pure text transforms (zalgo, leetspeak, fullwidth)
