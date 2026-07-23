@@ -25,7 +25,7 @@ from .image import (  # noqa: F401
     execute_read_metadata,
     execute_read_png_chunks,
 )
-from .meta import execute_list_techniques  # noqa: F401
+from .meta import execute_capabilities, execute_list_techniques  # noqa: F401
 from .network import (  # noqa: F401
     execute_network_decode,
     execute_network_encode,

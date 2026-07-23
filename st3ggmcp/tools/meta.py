@@ -1,12 +1,20 @@
-"""Meta tool: catalog of what the server covers."""
+"""Meta tools: catalog of what the server covers, and runtime capability report."""
 
 from __future__ import annotations
+
+import capabilities as caps
 
 from ._common import truncate_json
 
 
 async def execute_list_techniques(**_kw) -> str:
-    catalog = {
+    catalog: dict = {}
+    try:
+        snapshot = caps.snapshot()
+        catalog["capability_summary"] = snapshot["summary"]
+    except Exception as exc:
+        catalog["capability_summary"] = f"capability probe failed: {exc}"
+    catalog.update({
         "families": {
             "image": "PNG/JPEG/BMP carriers. LSB, chunk smuggling, trailing bytes, metadata, polyglots.",
             "text":  "Prose and source-code carriers. Zero-width, cyrillic_homoglyph, cjk_homoglyph, whitespace, variation, combining, confusable, directional, hangul, mathbold, capitalization, invisible_ink.",
@@ -53,11 +61,23 @@ async def execute_list_techniques(**_kw) -> str:
                 "after the cover — visibly perturbed, not invisible."
             ),
         },
-    }
+    })
     return truncate_json(catalog, max_chars=3000)
 
 
-EXECUTORS = {"stegg_list_techniques": execute_list_techniques}
+async def execute_capabilities(**_kw) -> str:
+    """Report which packages, binaries, and techniques are usable right now."""
+    try:
+        snapshot = caps.snapshot()
+    except Exception as exc:
+        return f"stegg_capabilities error: {type(exc).__name__}: {exc}"
+    return truncate_json(snapshot, max_chars=8000)
+
+
+EXECUTORS = {
+    "stegg_list_techniques": execute_list_techniques,
+    "stegg_capabilities": execute_capabilities,
+}
 
 
 SCHEMAS = {
@@ -66,7 +86,23 @@ SCHEMAS = {
             "Return a catalog of what this server covers: three carrier families "
             "(image, text, emoji) plus a general-advice slot (persona answers "
             "technique-tradeoff and transport-survival questions from knowledge, "
-            "no tool call needed). Grouped by detect / encode role."
+            "no tool call needed). Grouped by detect / encode role. Includes a "
+            "one-line `capability_summary` (call `stegg_capabilities` for the "
+            "full report)."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    "stegg_capabilities": {
+        "description": (
+            "Report what this stegg install can actually do right now: which "
+            "optional Python packages are importable (jpeglib, piexif, pyexiv2, "
+            "pikepdf, pypdf, apng, cryptography), which external binaries are on "
+            "PATH (exiftool, steghide, outguess, ffmpeg, qpdf), and which "
+            "technique keys — the same keys the transport-survivability matrix "
+            "uses — are usable, missing, or promotable. **Call this once at "
+            "session start** so ST3GG never recommends a technique the host "
+            "environment can't run; every 'missing' technique carries an "
+            "install_hint."
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },
