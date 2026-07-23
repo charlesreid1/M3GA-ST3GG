@@ -1,24 +1,16 @@
-"""Runtime capability detection for stegg.
+"""Runtime tool-capability detection for stegg.
 
-Reports what the current Python process can actually do:
+Two levels:
 
-- Which optional Python packages are importable (`jpeglib`, `piexif`,
-  `pyexiv2`, `pikepdf`, …).
-- Which external binaries are on ``PATH`` (`exiftool`, `steghide`,
-  `outguess`, `ffmpeg`).
-- For each *technique key* used by the transport-survivability matrix,
-  whether at least one backend is usable right now, which one is the
-  default, and how to promote to a better one.
+- **Tool check** — is a specific Python package importable, or a specific
+  binary on ``$PATH``? Yes/no, plus a version string if we can grab one.
+- **Tool capability** — a high-level thing the caller wants to do (e.g.
+  "write EXIF to a JPEG"), backed by an ordered list of tool checks.
+  The first installed one wins.
 
-The persona is expected to call :func:`snapshot` (via the MCP
-``stegg_capabilities`` tool) **once per session** and cache the result.
-Every image/audio/metadata technique should be introduced with a check:
-if the technique's status is ``missing`` the persona names the install
-step instead of pretending it works.
-
-Every probe is cached per-process — probes are cheap
-(``importlib.util.find_spec`` + ``shutil.which``) but not free, and we
-want repeated MCP calls to be O(dict lookup).
+Call :func:`snapshot` once per session (via the MCP ``stegg_capabilities``
+tool) and cache it. Tool checks are cached per-process — they're cheap
+but not free.
 """
 
 from __future__ import annotations
@@ -27,17 +19,16 @@ import importlib
 import importlib.util
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass, field
-from typing import Callable, Dict, List, Literal, Optional
+from dataclasses import asdict, dataclass
+from typing import Dict, List, Literal, Optional
 
 Status = Literal["available", "missing", "error"]
 Kind = Literal["python", "binary"]
-TechniqueStatus = Literal["available", "missing"]
 
 
 @dataclass(frozen=True)
-class Capability:
-    """A single probe result: one package or one binary."""
+class ToolCheck:
+    """Result of checking one tool: one Python package or one binary."""
 
     name: str
     kind: Kind
@@ -51,566 +42,231 @@ class Capability:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
-@dataclass(frozen=True)
-class Technique:
-    """How one technique maps onto the available backends.
-
-    ``backend_menu`` is ordered — first entry whose capabilities are met
-    wins. Each menu entry names either a Python package
-    (``"pkg:jpeglib"``), a binary (``"bin:exiftool"``), or the sentinel
-    ``"pure_python"`` (always available).
-    """
-
-    key: str
-    family: str
-    description: str
-    backend_menu: List[str] = field(default_factory=list)
-
-
 # ---------------------------------------------------------------------------
-# Probe registry
+# Tool checks
 # ---------------------------------------------------------------------------
 
-ProbeFn = Callable[[], Capability]
-_PROBES: Dict[str, ProbeFn] = {}
-_CACHE: Dict[str, Capability] = {}
-
-
-def register_probe(name: str, fn: ProbeFn) -> None:
-    """Register a probe. Idempotent — re-registering the same name replaces."""
-    _PROBES[name] = fn
-
-
-def clear_cache() -> None:
-    """Drop the per-process probe cache. Tests use this; callers rarely need it."""
-    _CACHE.clear()
-
-
-def get(name: str) -> Capability:
-    """Run one probe (cached). Raises ``KeyError`` for unknown names."""
-    if name in _CACHE:
-        return _CACHE[name]
-    if name not in _PROBES:
-        raise KeyError(f"no such probe: {name!r}")
-    result = _PROBES[name]()
-    _CACHE[name] = result
-    return result
-
-
-def probe_all() -> Dict[str, Capability]:
-    """Run every registered probe. Cached per-process."""
-    return {name: get(name) for name in _PROBES}
-
-
-# ---------------------------------------------------------------------------
-# Probe primitives
-# ---------------------------------------------------------------------------
-
-def _probe_python_package(
-    name: str,
-    *,
-    install_hint: Optional[str] = None,
-    version_attr: str = "__version__",
-) -> Capability:
-    spec = importlib.util.find_spec(name)
-    if spec is None:
-        return Capability(
-            name=name,
-            kind="python",
-            status="missing",
-            install_hint=install_hint,
-        )
+def _check_python_package(name: str, install_hint: Optional[str] = None) -> ToolCheck:
+    if importlib.util.find_spec(name) is None:
+        return ToolCheck(name, "python", "missing", install_hint=install_hint)
     try:
         module = importlib.import_module(name)
     except Exception as exc:
-        return Capability(
-            name=name,
-            kind="python",
-            status="error",
+        return ToolCheck(
+            name, "python", "error",
             detail=f"{type(exc).__name__}: {exc}",
             install_hint=install_hint,
         )
-    version = getattr(module, version_attr, None)
-    if version is not None:
-        version = str(version)
-    return Capability(
-        name=name,
-        kind="python",
-        status="available",
-        version=version,
-    )
+    version = getattr(module, "__version__", None)
+    return ToolCheck(name, "python", "available", version=str(version) if version else None)
 
 
-def _probe_binary(
-    name: str,
-    *,
-    version_args: Optional[List[str]] = None,
-    install_hint: Optional[str] = None,
-    timeout: float = 2.0,
-) -> Capability:
+def _check_binary(name: str, version_args: List[str], install_hint: Optional[str] = None) -> ToolCheck:
     path = shutil.which(name)
     if path is None:
-        return Capability(
-            name=name,
-            kind="binary",
-            status="missing",
-            install_hint=install_hint,
-        )
+        return ToolCheck(name, "binary", "missing", install_hint=install_hint)
     version = None
-    if version_args:
-        try:
-            proc = subprocess.run(
-                [path, *version_args],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-            out = (proc.stdout or proc.stderr or "").strip().splitlines()
-            if out:
-                version = out[0].strip()[:120]
-        except Exception:
-            version = None
-    return Capability(
-        name=name,
-        kind="binary",
-        status="available",
-        path=path,
-        version=version,
-    )
+    try:
+        proc = subprocess.run(
+            [path, *version_args],
+            capture_output=True, text=True, timeout=2.0, check=False,
+        )
+        first = (proc.stdout or proc.stderr or "").strip().splitlines()
+        if first:
+            version = first[0].strip()[:120]
+    except Exception:
+        pass
+    return ToolCheck(name, "binary", "available", path=path, version=version)
+
+
+# name -> install_hint (None = ships with the base install)
+_PYTHON_PACKAGES: Dict[str, Optional[str]] = {
+    "jpeglib":      "pip install 'stegg[jpeg]'",
+    "piexif":       "pip install 'stegg[metadata]'",
+    "pyexiv2":      "pip install 'stegg[metadata]'",
+    "pikepdf":      "pip install 'stegg[pdf]'",
+    "pypdf":        "pip install 'stegg[pdf]'",
+    "apng":         "pip install apng",
+    "cryptography": "pip install 'stegg[crypto]'",
+    "PIL":          None,
+    "numpy":        None,
+}
+
+# name -> (version_args, install_hint)
+_BINARIES: Dict[str, tuple] = {
+    "exiftool": (["-ver"],      "brew install exiftool  # or: apt install libimage-exiftool-perl"),
+    "steghide": (["--version"], "brew install steghide  # or: apt install steghide"),
+    "outguess": (["-h"],        "brew install outguess  # or: apt install outguess"),
+    "ffmpeg":   (["-version"],  "brew install ffmpeg  # or: apt install ffmpeg"),
+    "qpdf":     (["--version"], "brew install qpdf  # or: apt install qpdf"),
+}
+
+_TOOL_CHECK_CACHE: Dict[str, ToolCheck] = {}
+
+
+def clear_cache() -> None:
+    """Drop the per-process tool-check cache. For tests."""
+    _TOOL_CHECK_CACHE.clear()
+
+
+def check_tool(name: str) -> ToolCheck:
+    """Run one tool check (cached). Raises ``KeyError`` for unknown names."""
+    if name in _TOOL_CHECK_CACHE:
+        return _TOOL_CHECK_CACHE[name]
+    if name in _PYTHON_PACKAGES:
+        result = _check_python_package(name, _PYTHON_PACKAGES[name])
+    elif name in _BINARIES:
+        args, hint = _BINARIES[name]
+        result = _check_binary(name, args, hint)
+    else:
+        raise KeyError(f"no such tool check: {name!r}")
+    _TOOL_CHECK_CACHE[name] = result
+    return result
+
+
+def check_all_tools() -> Dict[str, ToolCheck]:
+    return {n: check_tool(n) for n in (*_PYTHON_PACKAGES, *_BINARIES)}
 
 
 # ---------------------------------------------------------------------------
-# Seed probes
+# Tool capabilities
 #
-# Every probe below covers something the transport-survivability plan
-# eventually wants to promote a matrix cell for. Missing tools always
-# report `missing` with an install hint; nothing here throws on a fresh
-# install.
+# Each entry is (family, description, backend_menu). The menu is ordered:
+# the first backend whose tool check passes wins. Menu entries name a
+# Python package ("pkg:jpeglib"), a binary ("bin:exiftool"), or the
+# sentinel "pure_python" (always available).
 # ---------------------------------------------------------------------------
 
-# Python packages — optional, promotable backends
-register_probe(
-    "jpeglib",
-    lambda: _probe_python_package(
-        "jpeglib",
-        install_hint="pip install 'stegg[jpeg]'",
-    ),
-)
-register_probe(
-    "piexif",
-    lambda: _probe_python_package(
-        "piexif",
-        install_hint="pip install 'stegg[metadata]'",
-    ),
-)
-register_probe(
-    "pyexiv2",
-    lambda: _probe_python_package(
-        "pyexiv2",
-        install_hint="pip install 'stegg[metadata]'",
-    ),
-)
-register_probe(
-    "pikepdf",
-    lambda: _probe_python_package(
-        "pikepdf",
-        install_hint="pip install 'stegg[pdf]'",
-    ),
-)
-register_probe(
-    "pypdf",
-    lambda: _probe_python_package(
-        "pypdf",
-        install_hint="pip install 'stegg[pdf]'",
-    ),
-)
-register_probe(
-    "apng",
-    lambda: _probe_python_package(
-        "apng",
-        install_hint="pip install apng",
-    ),
-)
-
-# Python packages that ship in the base install — probing them tells the
-# persona what pure-Python fallbacks are available.
-register_probe(
-    "PIL",
-    lambda: _probe_python_package(
-        "PIL",
-        version_attr="__version__",
-    ),
-)
-register_probe(
-    "numpy",
-    lambda: _probe_python_package(
-        "numpy",
-        version_attr="__version__",
-    ),
-)
-register_probe(
-    "cryptography",
-    lambda: _probe_python_package(
-        "cryptography",
-        install_hint="pip install 'stegg[crypto]'",
-    ),
-)
-
-# External binaries — best-fidelity implementations for their domains
-register_probe(
-    "exiftool",
-    lambda: _probe_binary(
-        "exiftool",
-        version_args=["-ver"],
-        install_hint="brew install exiftool  # or: apt install libimage-exiftool-perl",
-    ),
-)
-register_probe(
-    "steghide",
-    lambda: _probe_binary(
-        "steghide",
-        version_args=["--version"],
-        install_hint="brew install steghide  # or: apt install steghide",
-    ),
-)
-register_probe(
-    "outguess",
-    lambda: _probe_binary(
-        "outguess",
-        version_args=["-h"],
-        install_hint="brew install outguess  # or: apt install outguess",
-    ),
-)
-register_probe(
-    "ffmpeg",
-    lambda: _probe_binary(
-        "ffmpeg",
-        version_args=["-version"],
-        install_hint="brew install ffmpeg  # or: apt install ffmpeg",
-    ),
-)
-register_probe(
-    "qpdf",
-    lambda: _probe_binary(
-        "qpdf",
-        version_args=["--version"],
-        install_hint="brew install qpdf  # or: apt install qpdf",
-    ),
-)
-
-
-# ---------------------------------------------------------------------------
-# Technique registry
-#
-# One entry per technique key the transport-survivability matrix wants to
-# be able to reference. Every entry lists the ordered backend_menu; the
-# resolver below picks the first available one.
-# ---------------------------------------------------------------------------
-
-TECHNIQUES: Dict[str, Technique] = {
-    # ---- image: LSB family (base install, always available) ----
-    "png_lsb_1bit": Technique(
-        key="png_lsb_1bit",
-        family="image",
-        description="PNG LSB, 1 bit per channel. Highest-stealth LSB variant.",
-        backend_menu=["pure_python"],
-    ),
-    "png_lsb_2bit": Technique(
-        key="png_lsb_2bit",
-        family="image",
-        description="PNG LSB, 2 bits per channel. Double the capacity, still stealthy.",
-        backend_menu=["pure_python"],
-    ),
-    "png_lsb_specter": Technique(
-        key="png_lsb_specter",
-        family="image",
-        description="Specter LSB — password-driven cipher stack over LSB.",
-        backend_menu=["pure_python"],
-    ),
-    "png_pvd": Technique(
-        key="png_pvd",
-        family="image",
-        description="Pixel-value differencing. Harder to detect via histogram than LSB.",
-        backend_menu=["pure_python"],
-    ),
-    # ---- image: PNG metadata (base install) ----
-    "png_tEXt": Technique(
-        key="png_tEXt",
-        family="image",
-        description="Plaintext PNG tEXt ancillary chunk.",
-        backend_menu=["pure_python"],
-    ),
-    "png_zTXt": Technique(
-        key="png_zTXt",
-        family="image",
-        description="Compressed PNG zTXt ancillary chunk.",
-        backend_menu=["pure_python"],
-    ),
-    "png_iTXt": Technique(
-        key="png_iTXt",
-        family="image",
-        description="International PNG iTXt ancillary chunk (UTF-8 keyword + text).",
-        backend_menu=["pure_python"],
-    ),
-    "png_private_chunk": Technique(
-        key="png_private_chunk",
-        family="image",
-        description="Caller-defined 4-char private PNG chunk.",
-        backend_menu=["pure_python"],
-    ),
-    "png_trailing_bytes": Technique(
-        key="png_trailing_bytes",
-        family="image",
-        description="Payload appended after the PNG IEND marker.",
-        backend_menu=["pure_python"],
-    ),
-    # ---- image: JPEG DCT family (gap targets from the coverage plan) ----
-    "jpeg_dct_f5": Technique(
-        key="jpeg_dct_f5",
-        family="image",
-        description="F5 algorithm on JPEG DCT coefficients. Survives JPEG recompression.",
-        backend_menu=["pkg:jpeglib", "pure_python"],
-    ),
-    "jpeg_dct_jsteg": Technique(
-        key="jpeg_dct_jsteg",
-        family="image",
-        description="JSteg: LSB of nonzero DCT coefficients. Simple, detectable.",
-        backend_menu=["pkg:jpeglib", "pure_python"],
-    ),
-    "jpeg_dct_specter": Technique(
-        key="jpeg_dct_specter",
-        family="image",
-        description="Specter DCT — password-driven cipher stack over DCT coefficients.",
-        backend_menu=["pure_python"],
-    ),
-    "jpeg_steghide": Technique(
-        key="jpeg_steghide",
-        family="image",
-        description="steghide external tool. Separate algorithm, not an F5 backend.",
-        backend_menu=["bin:steghide"],
-    ),
-    "jpeg_outguess": Technique(
-        key="jpeg_outguess",
-        family="image",
-        description="OutGuess external tool. Separate algorithm.",
-        backend_menu=["bin:outguess"],
-    ),
-    "jpeg_trailing_bytes": Technique(
-        key="jpeg_trailing_bytes",
-        family="image",
-        description="Payload appended after the JPEG EOI marker.",
-        backend_menu=["pure_python"],
-    ),
-    # ---- image: JPEG metadata write side ----
-    "jpeg_exif": Technique(
-        key="jpeg_exif",
-        family="image",
-        description="Write EXIF fields to a JPEG.",
-        backend_menu=["pkg:pyexiv2", "bin:exiftool", "pkg:piexif"],
-    ),
-    "jpeg_xmp": Technique(
-        key="jpeg_xmp",
-        family="image",
-        description="Write XMP metadata to a JPEG.",
-        backend_menu=["pkg:pyexiv2", "bin:exiftool"],
-    ),
-    "jpeg_iptc": Technique(
-        key="jpeg_iptc",
-        family="image",
-        description="Write IPTC metadata to a JPEG.",
-        backend_menu=["pkg:pyexiv2", "bin:exiftool"],
-    ),
-    "icc_profile": Technique(
-        key="icc_profile",
-        family="image",
-        description="Write or manipulate an ICC color profile chunk.",
-        backend_menu=["pkg:pyexiv2", "bin:exiftool"],
-    ),
-    # ---- image: container smuggling ----
-    "container_apng": Technique(
-        key="container_apng",
-        family="image",
-        description="APNG multi-frame container smuggling.",
-        backend_menu=["pkg:apng", "pure_python"],
-    ),
-    "container_gif": Technique(
-        key="container_gif",
-        family="image",
-        description="GIF comment/application-extension smuggling.",
-        backend_menu=["pure_python"],
-    ),
-    "container_pdf_multipage": Technique(
-        key="container_pdf_multipage",
-        family="image",
-        description="Multi-page PDF authoring with payload smuggling.",
-        backend_menu=["pkg:pikepdf", "pkg:pypdf", "bin:qpdf"],
-    ),
-    "polyglot_png_zip": Technique(
-        key="polyglot_png_zip",
-        family="image",
-        description="PNG that is also a valid ZIP (concatenation polyglot).",
-        backend_menu=["pure_python"],
-    ),
-    "polyglot_zip_png": Technique(
-        key="polyglot_zip_png",
-        family="image",
-        description="ZIP that is also a valid PNG.",
-        backend_menu=["pure_python"],
-    ),
-    # ---- audio ----
-    "audio_lsb_wav": Technique(
-        key="audio_lsb_wav",
-        family="audio",
-        description="LSB in PCM WAV samples.",
-        backend_menu=["pure_python"],
-    ),
-    "container_multitrack_audio": Technique(
-        key="container_multitrack_audio",
-        family="audio",
-        description="Multi-track audio container smuggling. Requires ffmpeg.",
-        backend_menu=["bin:ffmpeg"],
-    ),
+TOOL_CAPABILITIES: Dict[str, tuple] = {
+    # image: LSB family (base install, always available)
+    "png_lsb_1bit":       ("image", "PNG LSB, 1 bit per channel. Highest-stealth LSB variant.",              ["pure_python"]),
+    "png_lsb_2bit":       ("image", "PNG LSB, 2 bits per channel. Double the capacity, still stealthy.",    ["pure_python"]),
+    "png_lsb_specter":    ("image", "Specter LSB — password-driven cipher stack over LSB.",                 ["pure_python"]),
+    "png_pvd":            ("image", "Pixel-value differencing. Harder to detect via histogram than LSB.",   ["pure_python"]),
+    # image: PNG metadata (base install)
+    "png_tEXt":           ("image", "Plaintext PNG tEXt ancillary chunk.",                                  ["pure_python"]),
+    "png_zTXt":           ("image", "Compressed PNG zTXt ancillary chunk.",                                 ["pure_python"]),
+    "png_iTXt":           ("image", "International PNG iTXt ancillary chunk (UTF-8 keyword + text).",       ["pure_python"]),
+    "png_private_chunk":  ("image", "Caller-defined 4-char private PNG chunk.",                             ["pure_python"]),
+    "png_trailing_bytes": ("image", "Payload appended after the PNG IEND marker.",                          ["pure_python"]),
+    # image: JPEG DCT family
+    "jpeg_dct_f5":        ("image", "F5 algorithm on JPEG DCT coefficients. Survives JPEG recompression.",  ["pkg:jpeglib", "pure_python"]),
+    "jpeg_dct_jsteg":     ("image", "JSteg: LSB of nonzero DCT coefficients. Simple, detectable.",          ["pkg:jpeglib", "pure_python"]),
+    "jpeg_dct_specter":   ("image", "Specter DCT — password-driven cipher stack over DCT coefficients.",    ["pure_python"]),
+    "jpeg_steghide":      ("image", "steghide external tool. Separate algorithm, not an F5 backend.",       ["bin:steghide"]),
+    "jpeg_outguess":      ("image", "OutGuess external tool. Separate algorithm.",                          ["bin:outguess"]),
+    "jpeg_trailing_bytes":("image", "Payload appended after the JPEG EOI marker.",                          ["pure_python"]),
+    # image: JPEG metadata write side
+    "jpeg_exif":          ("image", "Write EXIF fields to a JPEG.",                                         ["pkg:pyexiv2", "bin:exiftool", "pkg:piexif"]),
+    "jpeg_xmp":           ("image", "Write XMP metadata to a JPEG.",                                        ["pkg:pyexiv2", "bin:exiftool"]),
+    "jpeg_iptc":          ("image", "Write IPTC metadata to a JPEG.",                                       ["pkg:pyexiv2", "bin:exiftool"]),
+    "icc_profile":        ("image", "Write or manipulate an ICC color profile chunk.",                      ["pkg:pyexiv2", "bin:exiftool"]),
+    # image: container smuggling
+    "container_apng":         ("image", "APNG multi-frame container smuggling.",                            ["pkg:apng", "pure_python"]),
+    "container_gif":          ("image", "GIF comment/application-extension smuggling.",                     ["pure_python"]),
+    "container_pdf_multipage":("image", "Multi-page PDF authoring with payload smuggling.",                 ["pkg:pikepdf", "pkg:pypdf", "bin:qpdf"]),
+    "polyglot_png_zip":       ("image", "PNG that is also a valid ZIP (concatenation polyglot).",           ["pure_python"]),
+    "polyglot_zip_png":       ("image", "ZIP that is also a valid PNG.",                                    ["pure_python"]),
+    # audio
+    "audio_lsb_wav":              ("audio", "LSB in PCM WAV samples.",                                      ["pure_python"]),
+    "container_multitrack_audio": ("audio", "Multi-track audio container smuggling. Requires ffmpeg.",      ["bin:ffmpeg"]),
 }
 
 
-# ---------------------------------------------------------------------------
-# Backend resolution
-# ---------------------------------------------------------------------------
-
-def _menu_entry_available(entry: str) -> bool:
+def _backend_installed(entry: str) -> bool:
     if entry == "pure_python":
         return True
-    kind, _, name = entry.partition(":")
-    if kind not in ("pkg", "bin"):
-        return False
     try:
-        return get(name).status == "available"
-    except KeyError:
+        return check_tool(entry.split(":", 1)[1]).status == "available"
+    except (KeyError, IndexError):
         return False
 
 
-def _menu_entry_status(entry: str) -> Optional[Capability]:
+def _backend_tool_check(entry: str) -> Optional[ToolCheck]:
     if entry == "pure_python":
         return None
-    _, _, name = entry.partition(":")
     try:
-        return get(name)
-    except KeyError:
+        return check_tool(entry.split(":", 1)[1])
+    except (KeyError, IndexError):
         return None
 
 
-def resolve_technique(key: str) -> dict:
-    """Look up one technique's current status.
+def resolve_capability(name: str) -> dict:
+    """Resolve one tool capability against the current tool-check cache.
 
-    Returns a JSON-shaped dict with keys:
-
-    - ``status``: ``"available"`` if any backend in the menu is usable,
-      else ``"missing"``.
-    - ``backend``: the winning menu entry (or ``None`` if none matched).
-    - ``promotable_to``: menu entries above the winner that would take
-      over if installed.
-    - ``requires_any_of``: for ``missing`` techniques, the human names of
-      the menu entries and their install hints.
+    Returns:
+      - ``status``: "available" if any menu entry is usable, else "missing".
+      - ``backend``: winning entry, or None.
+      - ``promotable_to``: entries ordered *before* the winner (they'd take
+        over if installed). Only present when status is "available".
+      - ``requires_any_of``: entries that would satisfy the capability, with
+        install hints. Only present when status is "missing".
     """
-    tech = TECHNIQUES.get(key)
-    if tech is None:
-        raise KeyError(f"no such technique: {key!r}")
+    try:
+        _, _, menu = TOOL_CAPABILITIES[name]
+    except KeyError:
+        raise KeyError(f"no such tool capability: {name!r}")
 
-    chosen: Optional[str] = None
-    promotable_to: List[str] = []
-    requires_any_of: List[dict] = []
+    for i, entry in enumerate(menu):
+        if _backend_installed(entry):
+            return {
+                "status": "available",
+                "backend": entry,
+                "promotable_to": menu[:i],
+            }
 
-    for entry in tech.backend_menu:
-        if _menu_entry_available(entry):
-            if chosen is None:
-                chosen = entry
-            else:
-                # Earlier menu entries not yet chosen are promotions — but
-                # by the time we hit a later winner, the earlier ones
-                # weren't available. This branch is unreachable.
-                pass
-        else:
-            cap = _menu_entry_status(entry)
-            if cap is not None:
-                requires_any_of.append({
-                    "name": cap.name,
-                    "kind": cap.kind,
-                    "install_hint": cap.install_hint,
-                })
-            # When something above the winner is missing, it becomes a
-            # promotion path — but only if we haven't chosen yet.
-            if chosen is None:
-                promotable_to.append(entry)
-
-    if chosen is not None:
-        # Anything ordered *earlier* than the winner and still missing is
-        # a promotion path.
-        winner_index = tech.backend_menu.index(chosen)
-        promotable_to = [
-            e for e in tech.backend_menu[:winner_index]
-            if not _menu_entry_available(e)
-        ]
-        return {
-            "status": "available",
-            "backend": chosen,
-            "promotable_to": promotable_to,
-        }
-    return {
-        "status": "missing",
-        "backend": None,
-        "requires_any_of": requires_any_of,
-    }
+    requires: List[dict] = []
+    for entry in menu:
+        tc = _backend_tool_check(entry)
+        if tc is not None:
+            requires.append({
+                "name": tc.name,
+                "kind": tc.kind,
+                "install_hint": tc.install_hint,
+            })
+    return {"status": "missing", "backend": None, "requires_any_of": requires}
 
 
-def techniques_supported() -> Dict[str, dict]:
-    """Resolve every registered technique. Order is insertion order."""
-    return {key: resolve_technique(key) for key in TECHNIQUES}
+def resolve_all_capabilities() -> Dict[str, dict]:
+    return {name: resolve_capability(name) for name in TOOL_CAPABILITIES}
 
 
 # ---------------------------------------------------------------------------
-# Snapshot: what the MCP tool + persona consume
+# Snapshot
 # ---------------------------------------------------------------------------
 
 def snapshot() -> dict:
-    """Full capability snapshot: packages, binaries, techniques, and a
-    one-line summary suitable for the persona's session cache.
+    """Full snapshot: tool checks, tool capabilities, and a one-line
+    summary suitable for the persona's session cache.
     """
-    caps = probe_all()
-
     python_packages: Dict[str, dict] = {}
     binaries: Dict[str, dict] = {}
-    for cap in caps.values():
-        entry = cap.to_dict()
+    for tc in check_all_tools().values():
+        entry = tc.to_dict()
         entry.pop("name", None)
         entry.pop("kind", None)
-        (python_packages if cap.kind == "python" else binaries)[cap.name] = entry
+        (python_packages if tc.kind == "python" else binaries)[tc.name] = entry
 
-    techniques = techniques_supported()
-    total = len(techniques)
-    available = sum(1 for t in techniques.values() if t["status"] == "available")
-    summary = (
-        f"{available}/{total} techniques available; "
-        f"{total - available} need optional installs."
-    )
+    capabilities = resolve_all_capabilities()
+    total = len(capabilities)
+    available = sum(1 for c in capabilities.values() if c["status"] == "available")
+    summary = f"{available}/{total} tool capabilities available; {total - available} need optional installs."
 
     return {
         "python_packages": python_packages,
         "binaries": binaries,
-        "techniques": techniques,
+        "tool_capabilities": capabilities,
         "summary": summary,
     }
 
 
 __all__ = [
-    "Capability",
-    "Technique",
-    "TECHNIQUES",
+    "ToolCheck",
+    "TOOL_CAPABILITIES",
+    "check_tool",
+    "check_all_tools",
     "clear_cache",
-    "get",
-    "probe_all",
-    "register_probe",
-    "resolve_technique",
+    "resolve_capability",
+    "resolve_all_capabilities",
     "snapshot",
-    "techniques_supported",
 ]
