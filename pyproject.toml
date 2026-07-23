@@ -53,6 +53,8 @@ mcp = [
     "uvicorn>=0.24.0",
     "starlette>=0.31.0",
 ]
+# JPEG DCT coefficient IO (F5 steganography)
+jpeg = ["jpeglib>=1.0"]
 # Everything
 all = [
     "nicegui>=1.4.0",
@@ -62,6 +64,7 @@ all = [
     "mcp>=1.0.0",
     "uvicorn>=0.24.0",
     "starlette>=0.31.0",
+    "jpeglib>=1.0",
 ]
 
 [project.scripts]
@@ -79,7 +82,7 @@ Issues = "https://github.com/elder-plinius/st3gg/issues"
 
 [tool.setuptools]
 py-modules = ["img_core", "crypto", "analysis_tools", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "stegg_cli", "capabilities"]
-packages = ["st3ggmcp"]
+packages = ["st3ggmcp", "f5_core"]
 
 [tool.setuptools.package-data]
 "*" = ["index.html", "f5stego-lib.js", "_headers", "wrangler.jsonc"]
