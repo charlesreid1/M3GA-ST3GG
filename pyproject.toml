@@ -55,6 +55,10 @@ mcp = [
 ]
 # JPEG DCT coefficient IO (F5 steganography)
 jpeg = ["jpeglib>=1.0"]
+# Metadata writing (EXIF)
+metadata = ["piexif>=1.1"]
+# PDF authoring
+pdf = ["pypdf>=4.0"]
 # Everything
 all = [
     "nicegui>=1.4.0",
@@ -65,12 +69,14 @@ all = [
     "uvicorn>=0.24.0",
     "starlette>=0.31.0",
     "jpeglib>=1.0",
+    "piexif>=1.1",
+    "pypdf>=4.0",
 ]
 
 [project.scripts]
 stegg = "cli:main_cli"
 stegg-web = "webui:main"
-stegg-cli = "stegg_cli:main"
+
 stegg-mcp = "st3ggmcp.server:main"
 stegg-mcp-stdio = "st3ggmcp.server:main_stdio"
 
@@ -81,7 +87,7 @@ Documentation = "https://github.com/elder-plinius/st3gg#readme"
 Issues = "https://github.com/elder-plinius/st3gg/issues"
 
 [tool.setuptools]
-py-modules = ["img_core", "crypto", "analysis_tools", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "stegg_cli", "capabilities"]
+py-modules = ["img_core", "crypto", "analysis_tools", "audio_core", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "capabilities", "metadata_core", "pdf_core", "operations"]
 packages = ["st3ggmcp", "f5_core"]
 
 [tool.setuptools.package-data]

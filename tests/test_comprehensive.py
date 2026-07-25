@@ -28,9 +28,10 @@ from PIL import Image
 import numpy as np
 from img_core import (StegConfig, Channel, get_channel_preset, encode, decode,
                        detect_encoding, calculate_capacity)
+from audio_core import audio_lsb_decode
 from analysis_tools import (
     TOOL_REGISTRY, detect_file_type,
-    audio_lsb_decode, pcap_decode, zip_decode, tar_decode, gzip_decode,
+    pcap_decode, zip_decode, tar_decode, gzip_decode,
     sqlite_decode, pdf_decode, jpeg_decode, svg_decode, gif_analysis,
     bmp_analysis, generic_image_lsb_decode, detect_pvd_steg,
     detect_histogram_shift_steg, detect_multibit_lsb,
