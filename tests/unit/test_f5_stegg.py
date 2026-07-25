@@ -46,7 +46,7 @@ def test_python_roundtrip(clean_jpeg_bytes, payload):
 
 
 def test_str_key_rejected():
-    with pytest.raises(TypeError, match="F5Classic"):
+    with pytest.raises(TypeError, match="bytes key"):
         F5Stegg("password")  # type: ignore[arg-type]
 
 

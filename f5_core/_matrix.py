@@ -18,9 +18,8 @@ coefficients — so extract needs those DC positions to *read* as zero.
 If they hold real DC values, extract picks up their LSBs and corrupts
 the payload.
 
-The dialect classes (``F5Stegg`` / ``F5Classic``) are responsible for
-staging jpeglib's ``Y`` array into this shape: save the DCs, zero them,
-call embed/extract, restore.
+:class:`f5_core.f5_base.F5Base` handles staging jpeglib's ``Y`` array
+into this shape: save the DCs, zero them, call embed/extract, restore.
 
 Design constraint: the port is deliberately un-Pythonic in structure so
 that reviewers can diff it against the JS.  Micro-optimising the shrinkage
@@ -33,7 +32,7 @@ from typing import Protocol
 
 import numpy as np
 
-from ._errors import CapacityExceeded, ExtractionFailed
+from ._errors import CapacityExceeded
 
 
 class PRNGBackend(Protocol):
@@ -297,14 +296,12 @@ def embed_coefficients(
 # f5get — extraction
 # ---------------------------------------------------------------------------
 
-def extract_bytes(coeff: np.ndarray, prng: PRNGBackend) -> bytes:
+def extract_raw(coeff: np.ndarray, prng: PRNGBackend) -> bytes:
     """Port of the extraction half of ``f5stego.prototype.f5get``.
 
-    Returns the *unframed* payload bytes.  The caller strips the 2/3-byte
-    length prefix that :mod:`f5_core._framing` applied at embed time.
-
-    Raises :class:`ExtractionFailed` if the recovered length prefix
-    overshoots the extracted stream (wrong key, corruption).
+    Returns the raw framed byte stream — length prefix decode lives in
+    the dialect class (:meth:`f5_core.f5_base.F5Base._unframe`), not
+    here, so the matrix layer stays dialect-agnostic.
     """
     # JS: coeff = new Int16Array(comp.blocks.length);  coeff.set(comp.blocks);
     # We take a defensive copy — extract must not mutate the JPEG we
@@ -393,24 +390,4 @@ def extract_bytes(coeff: np.ndarray, prng: PRNGBackend) -> bytes:
         bitsAvail -= 8
         extrByte >>= 8
 
-    # Decode the JS length prefix — 2 bytes if MSB of out[1] is clear,
-    # else 3 bytes (bits: low8 | (mid7<<8) | (high<<15)).
-    if outPos < 2:
-        raise ExtractionFailed("extracted stream too short to hold a length prefix")
-
-    l = out[0]
-    if out[1] & 0x80:
-        if outPos < 3:
-            raise ExtractionFailed("extracted stream too short for 3-byte length prefix")
-        s = 3
-        l += ((out[1] & 0x7F) << 8) + (out[2] << 15)
-    else:
-        s = 2
-        l += out[1] << 8
-
-    if s + l > outPos:
-        raise ExtractionFailed(
-            f"length prefix claims {l} payload bytes but only {outPos - s} extracted"
-        )
-
-    return bytes(out[s : s + l])
+    return bytes(out[:outPos])

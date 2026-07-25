@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from f5_core._matrix import analyze, embed_coefficients, extract_bytes
+from f5_core._matrix import analyze, embed_coefficients, extract_raw
+from f5_core._framing import stegg_unframe
 from f5_core._prng_stegg import StegPRNG
 
 
@@ -137,7 +138,8 @@ def test_embed_extract_python_roundtrip(k):
     embed_coefficients(coeffs, framed, k, prng_embed)
 
     prng_extract = StegPRNG(key, max_pixels=16384)
-    got = extract_bytes(coeffs, prng_extract)
+    raw = extract_raw(coeffs, prng_extract)
+    got = stegg_unframe(raw)
     assert got == payload_body
 
 
@@ -157,13 +159,12 @@ def test_extract_rejects_bogus_length():
     embed_coefficients(coeffs, framed, 2, prng_embed)
 
     prng_wrong = StegPRNG(bad_key, max_pixels=16384)
+    raw = extract_raw(coeffs, prng_wrong)
     try:
-        got = extract_bytes(coeffs, prng_wrong)
-    except ExtractionFailed:
-        pass  # expected outcome
+        got = stegg_unframe(raw)
+    except (ValueError, ExtractionFailed):
+        pass  # expected: garbage length prefix overshoots the stream
     else:
-        # If extraction didn't raise, at least it must not match the
-        # true payload — otherwise the wrong-key case is silently OK.
         assert got != b"sixteen-bytes!!!", (
             "wrong key produced correct payload — key isn't being used"
         )

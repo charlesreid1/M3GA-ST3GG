@@ -11,11 +11,10 @@ payload with a **2- or 3-byte little-endian length**:
   ``0x80`` flag in the middle byte signals the 3-byte form.
 
 Extract's length-decode (``f5get`` lines 585–593) reverses the same
-scheme.  We do the reverse here in :func:`stegg_unframe`; the raw
-extraction path in :func:`f5_core._matrix.extract_bytes` already applies
-the length prefix internally and returns the unframed payload — this
-module exists mainly for the embed side and for tests that want to
-inspect the framed shape.
+scheme.  We do the reverse here in :func:`stegg_unframe`;
+:class:`f5_core.f5_stegg.F5Stegg` wires it in via ``_unframe``.  The
+matrix layer (:func:`f5_core._matrix.extract_raw`) is dialect-agnostic
+and returns the raw byte stream, framing intact.
 """
 
 from __future__ import annotations
