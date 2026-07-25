@@ -1,0 +1,45 @@
+{
+  "source_jpeg": "clean.jpg",
+  "cases": [
+    {
+      "label": "short_ascii",
+      "blob": "stegg_short_ascii.jpg",
+      "key_hex": "00010203",
+      "payload_hex": "48656c6c6f2066726f6d204a5321",
+      "payload_len": 14,
+      "k": 12,
+      "embedded": 17,
+      "changed": 22
+    },
+    {
+      "label": "longer_ascii",
+      "blob": "stegg_longer_ascii.jpg",
+      "key_hex": "deadbeef",
+      "payload_hex": "54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e202054686973207465737473206d756c74692d627974652065787472616374696f6e20776974682061206c6f6e676572207061796c6f616420746861742077696c6c206578657263697365206d6f7265206f662074686520636f656666696369656e742061727261792e",
+      "payload_len": 150,
+      "k": 9,
+      "embedded": 153.5,
+      "changed": 250
+    },
+    {
+      "label": "binary_payload",
+      "blob": "stegg_binary_payload.jpg",
+      "key_hex": "a0b1c2d3e4",
+      "payload_hex": "0001020304ff7f80fe00112233445566778899aabbccddeeff",
+      "payload_len": 25,
+      "k": 12,
+      "embedded": 29,
+      "changed": 39
+    },
+    {
+      "label": "single_byte",
+      "blob": "stegg_single_byte.jpg",
+      "key_hex": "01",
+      "payload_hex": "42",
+      "payload_len": 1,
+      "k": 14,
+      "embedded": 4,
+      "changed": 5
+    }
+  ]
+}

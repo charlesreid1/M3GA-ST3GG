@@ -36,6 +36,7 @@ from img_core import (
     encode, decode, create_config, calculate_capacity, analyze_image,
     detect_encoding, CHANNEL_PRESETS, EncodingStrategy,
     dct_encode, dct_decode, dct_capacity, DCT_STRENGTHS,
+    f5_encode, f5_decode, f5_capacity, f5_capacity_bytes,
 )
 try:
     from specter import (
@@ -885,6 +886,137 @@ def dct_capacity_cmd(
     for k, v in cap.items():
         table.add_row(k, str(v))
     console.print(Panel(table, title="[cyan]DCT capacity[/cyan]", border_style="cyan"))
+
+
+# ============== DCT: F5 COMMANDS ==============
+
+_JPEG_MAGIC = b"\xff\xd8\xff"
+
+f5_app = typer.Typer(help="🎛  F5: JPEG DCT coefficient steganography (Westfeld 2001)")
+dct_app.add_typer(f5_app, name="f5")
+
+
+def _check_jpeg(path: Path) -> bytes:
+    """Read *path*, verify it starts with JPEG magic, return the bytes."""
+    if not path.exists():
+        error(f"Input file not found: {path}")
+        raise typer.Exit(1)
+    data = path.read_bytes()
+    if data[:3] != _JPEG_MAGIC:
+        error(f"Not a JPEG file (magic bytes missing): {path}")
+        raise typer.Exit(1)
+    return data
+
+
+@f5_app.command("encode")
+def f5_encode_cmd(
+    input_image: Path = typer.Option(..., "--input", "-i", help="Input JPEG carrier image"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output JPEG path"),
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Text to encode"),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="File to encode"),
+    password: str = typer.Option(..., "--password", "-p", help="Password for the F5 keystream"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+):
+    """🎛  Embed data into JPEG DCT coefficients via the F5 algorithm."""
+    if not quiet:
+        print_banner(small=True)
+    if not text and not file:
+        error("Must provide --text or --file")
+        raise typer.Exit(1)
+
+    payload = file.read_bytes() if file else text.encode("utf-8")
+    jpeg_bytes = _check_jpeg(input_image)
+
+    if output is None:
+        output = Path(f"steg_f5_{input_image.stem}.jpg")
+
+    # Pre-flight capacity check.
+    cap = f5_capacity_bytes(jpeg_bytes)
+    if not quiet:
+        info = f5_capacity(jpeg_bytes)
+        console.print(Panel(
+            f"[cyan]Capacity:[/cyan] {cap:,} bytes\n"
+            f"[cyan]Coefficients:[/cyan] {info['coeff_total']:,} total\n"
+            f"[cyan]Payload:[/cyan] {len(payload):,} bytes",
+            title="[green]F5 Configuration[/green]",
+            border_style="green",
+        ))
+
+    if len(payload) > cap:
+        error(f"Payload too large! {len(payload):,} bytes > {cap:,} available")
+        raise typer.Exit(1)
+
+    try:
+        result = f5_encode(jpeg_bytes, payload, password=password)
+    except Exception as e:
+        error(f"F5 encoding failed: {e}")
+        raise typer.Exit(1)
+
+    output.write_bytes(result)
+    success(f"F5-encoded {len(payload):,} bytes → {output}")
+    if not quiet:
+        console.print(f"\n{FOOTER}")
+
+
+@f5_app.command("decode")
+def f5_decode_cmd(
+    input_image: Path = typer.Option(..., "--input", "-i", help="F5-encoded JPEG"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write recovered bytes here"),
+    password: str = typer.Option(..., "--password", "-p", help="Password used at encode time"),
+    raw: bool = typer.Option(False, "--raw", help="Output raw bytes (hex)"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+):
+    """🔎 Recover a payload previously hidden with `steg dct f5 encode`."""
+    if not quiet:
+        print_banner(small=True)
+
+    jpeg_bytes = _check_jpeg(input_image)
+
+    try:
+        data = f5_decode(jpeg_bytes, password=password)
+    except Exception as e:
+        error(f"F5 decoding failed: {e}")
+        raise typer.Exit(1)
+
+    success(f"Extracted {len(data):,} bytes via F5")
+
+    if output:
+        output.write_bytes(data)
+        success(f"Saved to: {output}")
+    elif raw:
+        console.print(Panel(data.hex(), title="[cyan]Raw Data (hex)[/cyan]", border_style="cyan"))
+    else:
+        try:
+            console.print(Panel(data.decode("utf-8"), title=f"{STATUS['decode']} [cyan]Decoded Message[/cyan]",
+                                border_style="cyan", box=box.DOUBLE))
+        except UnicodeDecodeError:
+            warning("Data is not valid UTF-8, showing hex preview:")
+            console.print(Panel(data[:500].hex() + ("..." if len(data) > 500 else ""),
+                                title="[yellow]Binary Data (hex preview)[/yellow]", border_style="yellow"))
+
+    if not quiet:
+        console.print(f"\n{FOOTER}")
+
+
+@f5_app.command("capacity")
+def f5_capacity_cmd(
+    input_image: Path = typer.Option(..., "--input", "-i", help="JPEG to measure"),
+):
+    """📏 Report how many payload bytes fit under F5 DCT embedding."""
+    jpeg_bytes = _check_jpeg(input_image)
+    cap = f5_capacity(jpeg_bytes)
+
+    # Build a readable table: key info first, then per-k capacity.
+    table = Table(show_header=False, box=box.SIMPLE)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value")
+    table.add_row("Total coefficients", f"{cap['coeff_total']:,}")
+    table.add_row("Large coefficients", f"{cap['coeff_large']:,}")
+    table.add_row("±1 coefficients", f"{cap['coeff_one']:,}")
+    table.add_row("Zero coefficients", f"{cap['coeff_zero']:,}")
+    table.add_row("k=1 capacity", f"{cap['capacity'][1]:,} bytes")
+    table.add_row("Max capacity (auto-k)", f"{f5_capacity_bytes(jpeg_bytes):,} bytes")
+    console.print(Panel(table, title="[cyan]F5 capacity[/cyan]", border_style="cyan"))
 
 
 # ============== TEXT STEG COMMANDS ==============

@@ -38,7 +38,7 @@ Rule of thumb: CLI first for context hygiene, MCP for inline reasoning.
   - `tools/` — per-family tool modules (`image`, `text`, `triage`, `meta`), each colocating executors with their JSON schemas
   - `field_guide.md`, `TRANSPORT_MATRIX.md` — persona + delivery-channel notes
 - `skills/stegg-cli/`, `skills/stegg-stego/` — agent skill definitions
-- `index.html`, `f5stego-lib.js` — browser Text Lab + F5 JPEG
+- `index.html` — browser Text Lab + F5 JPEG (legacy, frozen)
 - `tests/` — pytest suite (image round-trips, text detectors, cross-language fixtures)
 - `examples/` — pre-encoded fixtures
 

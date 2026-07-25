@@ -165,3 +165,6 @@ cython_debug/
 examples/pipelines/pipeline_crypto_lsb.png
 examples/pipelines/pipeline_polyglot.png
 examples/pipelines/pipeline_covert_text.md
+
+# Local working notes from the F5 port — not part of the shipped repo.
+gotchas.md
