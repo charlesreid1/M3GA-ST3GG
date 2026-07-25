@@ -168,3 +168,4 @@ examples/pipelines/pipeline_covert_text.md
 
 # Local working notes from the F5 port — not part of the shipped repo.
 gotchas.md
+tests/transport/secrets_slack.json
