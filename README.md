@@ -236,6 +236,14 @@ ST3GG doesn't just hide data in images. It covers **every modality**:
 ### Image Techniques
 LSB embedding (RGB, RGBA, grayscale) across PNG, BMP, TIFF, GIF, WebP, ICO, PPM, PGM — plus alpha channel LSB, PNG filter-type encoding, palette index manipulation, DCT frequency domain, PNG+ZIP polyglots, metadata injection (EXIF, XMP, tEXt chunks), and trailing data after IEND.
 
+> **F5 (JPEG DCT)** — hides data in the least significant bits of quantized DCT coefficients of a JPEG's luminance channel. Uses matrix encoding (Westfeld 2001) with permuted coefficient order and shrinkage handling. Requires `pip install stegg[jpeg]`. Byte-for-byte compatible with the legacy `f5stego-lib.js`.
+>
+> ```bash
+> stegg dct f5 encode -i in.jpg -t "secret" -p password -o out.jpg
+> stegg dct f5 decode -i out.jpg -p password
+> stegg dct f5 capacity -i in.jpg
+> ```
+
 ### Text & Unicode Techniques
 Zero-width characters (ZWSP/ZWNJ/ZWJ), invisible ink (Unicode tag chars U+E0000), homoglyph substitution (Cyrillic letters + CJK/fullwidth punctuation), variation selectors, combining diacritics (CGJ), confusable whitespace (en/em/thin/hair spaces), whitespace encoding (space=0/tab=1), emoji substitution, and capitalization encoding.
 

@@ -1813,6 +1813,76 @@ def pvd_decode(
     return _pvd_bits_to_bytes(payload_bits, length)
 
 
+# ============== F5 JPEG DCT Steganography ==============
+#
+# Wrappers around :class:`f5_core.F5Stegg` that follow the same shape as
+# the PVD and DCT families above.  Unlike those families, F5 operates on
+# raw JPEG bytes (not a :class:`PIL.Image.Image`) because it needs the
+# quantized DCT coefficients from the JPEG bitstream.
+#
+# The password string is encoded to UTF-8 internally — callers that need
+# raw byte keys import ``F5Stegg`` directly.
+
+
+def f5_encode(jpeg_bytes: bytes, payload: bytes, *, password: str) -> bytes:
+    """Embed ``payload`` into a JPEG via the F5 algorithm.
+
+    Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.F5Error`
+    (or a subclass) on failure.
+    """
+    from f5_core import F5Stegg
+
+    s = F5Stegg(password.encode("utf-8"))
+    return s.embed(jpeg_bytes, payload)
+
+
+def f5_decode(jpeg_bytes: bytes, *, password: str) -> bytes:
+    """Recover an F5-hidden payload from a JPEG.
+
+    Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
+    on wrong key or corrupt data.
+    """
+    from f5_core import F5Stegg
+
+    s = F5Stegg(password.encode("utf-8"))
+    return s.extract(jpeg_bytes)
+
+
+def f5_capacity(jpeg_bytes: bytes) -> dict:
+    """Analyse a JPEG for F5 capacity without modifying it.
+
+    Returns a dict with keys ``capacity`` (list, index 1..16), ``coeff_total``,
+    ``coeff_large``, ``coeff_zero``, ``coeff_one``, and ``coeff_one_ratio``.
+    """
+    from f5_core import F5Stegg
+
+    # analyse is key-agnostic — a dummy key satisfies the constructor.
+    s = F5Stegg(b"\x00")
+    return s.analyze(jpeg_bytes)
+
+
+def f5_capacity_bytes(jpeg_bytes: bytes, *, k: int | None = None) -> int:
+    """Usable F5 payload bytes at matrix-encoding parameter ``k``.
+
+    When ``k`` is *None* (the default), returns the capacity at the
+    highest ``k`` that fits, matching the auto-selection behaviour of
+    :func:`f5_encode`.  When ``k`` is given explicitly (1..16), returns
+    the capacity for that ``k``.
+
+    This mirrors :func:`pvd_capacity_bytes` (usable payload bytes).
+    """
+    cap = f5_capacity(jpeg_bytes)
+    capacities = cap["capacity"]  # list, index 0 unused
+    if k is not None:
+        if not (1 <= k <= 16):
+            raise ValueError(f"k must be in 1..16, got {k}")
+        return max(0, capacities[k])
+    # Auto: return max capacity (k=1). The embedding path auto-selects k
+    # based on actual payload size, but for the "how much fits?" question
+    # the most useful answer is the largest possible payload.
+    return max(capacities[1:])
+
+
 # ============== PNG chunk I/O ==============
 #
 # Low-level PNG chunk manipulation (tEXt / zTXt / iTXt / private chunks) and

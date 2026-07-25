@@ -869,6 +869,161 @@ async def execute_dct_capacity(
 
 
 # ---------------------------------------------------------------------------
+# stegg_f5_encode / stegg_f5_decode / stegg_f5_capacity
+# ---------------------------------------------------------------------------
+
+
+async def execute_f5_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    password: str = "",
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload in a JPEG's DCT coefficients via the F5 algorithm.
+
+    F5 (Westfeld 2001) embeds data in the least significant bits of quantized
+    DCT coefficients using matrix encoding and permuted coefficient order.
+    Unlike LSB, F5 survives JPEG recompression.
+
+    Payload is taken from *message* (UTF-8 encoded) or *payload_hex* (raw bytes
+    as hex); exactly one must be provided.  *password* seeds the permutation
+    keystream — the same password is needed to decode.
+    """
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    # Validate mutually-exclusive payload sources.
+    if (message is None) == (payload_hex is None):
+        return "stegg_f5_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_f5_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_f5_encode error: invalid 'payload_hex': {exc}"
+
+    if not isinstance(password, str):
+        return "stegg_f5_encode error: 'password' must be a string"
+
+    def work():
+        cap = img_core.f5_capacity_bytes(data)
+        if len(payload) > cap:
+            return {"__err__": (
+                f"payload is {len(payload)} bytes but F5 carrier has only "
+                f"{cap} usable bytes."
+            )}
+        try:
+            encoded = img_core.f5_encode(data, payload, password=password)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {
+            "encoded_bytes": encoded,
+            "capacity_bytes": cap,
+            "payload_bytes": len(payload),
+        }
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_f5_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("f5_encode failed")
+        return f"stegg_f5_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_f5_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(meta, ext="jpg")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_f5_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "F5"},
+        "capacity_bytes": result["capacity_bytes"],
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into JPEG carrier via F5. "
+            f"wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+async def execute_f5_decode(
+    path: str,
+    password: str = "",
+    **_kw,
+) -> str:
+    """Recover a payload previously hidden with stegg_f5_encode (F5 DCT)."""
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if not isinstance(password, str):
+        return "stegg_f5_decode error: 'password' must be a string"
+
+    def work():
+        try:
+            payload = img_core.f5_decode(data, password=password)
+        except Exception as exc:
+            return {"decoded": False, "error": str(exc)}
+        out: dict[str, Any] = {
+            "decoded": True,
+            "size": len(payload),
+            "payload_hex": payload.hex(),
+        }
+        try:
+            out["payload_utf8"] = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        return out
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_f5_decode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("f5_decode failed")
+        return f"stegg_f5_decode error: {exc}"
+    return truncate_json(result)
+
+
+async def execute_f5_capacity(
+    path: str,
+    **_kw,
+) -> str:
+    """Report how many payload bytes fit under F5 DCT embedding for a JPEG."""
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        return img_core.f5_capacity(data)
+
+    try:
+        report = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_f5_capacity timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("f5_capacity failed")
+        return f"stegg_f5_capacity error: {exc}"
+    # Augment with auto-k capacity for convenience.
+    report["capacity_bytes"] = img_core.f5_capacity_bytes(data)
+    return truncate_json(report)
+
+
+# ---------------------------------------------------------------------------
 # stegg_lsb_capacity
 # ---------------------------------------------------------------------------
 async def execute_lsb_capacity(
@@ -1042,6 +1197,9 @@ EXECUTORS = {
     "stegg_analyze_image": execute_analyze_image,
     "stegg_detect_pvd": execute_detect_pvd,
     "stegg_inject_exif": execute_inject_exif,
+    "stegg_f5_encode": execute_f5_encode,
+    "stegg_f5_decode": execute_f5_decode,
+    "stegg_f5_capacity": execute_f5_capacity,
 }
 
 
@@ -1339,6 +1497,56 @@ SCHEMAS = {
                 "output_path": {"type": "string", "description": "Where to write the modified PNG."},
             },
             "required": ["path", "metadata"],
+        },
+    },
+    "stegg_f5_encode": {
+        "description": (
+            "Hide a payload in a JPEG's DCT coefficients via the F5 algorithm "
+            "(Westfeld 2001). F5 embeds data in the LSBs of quantized DCT "
+            "coefficients using matrix encoding with permuted coefficient order. "
+            "Unlike LSB, this survives JPEG recompression. Requires a password "
+            "that must match at decode time. Writes a JPEG to output_path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JPEG carrier image."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "password": {"type": "string", "description": "Password seeding the F5 permutation keystream. Default empty string."},
+                "output_path": {"type": "string", "description": "Where to write the encoded JPEG."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_f5_decode": {
+        "description": (
+            "Recover a payload previously hidden with stegg_f5_encode. "
+            "Requires the same password used at encode time. Returns the "
+            "payload as both hex and (when valid) UTF-8 text."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the F5-encoded JPEG."},
+                "password": {"type": "string", "description": "Password used at encode time. Default empty string."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_f5_capacity": {
+        "description": (
+            "Report how many payload bytes fit in a JPEG under F5 DCT embedding. "
+            "F5 capacity depends on the distribution of DCT coefficient values; "
+            "images with many ±1 coefficients have lower usable capacity due to "
+            "shrinkage. Use this before stegg_f5_encode to check fit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JPEG image."},
+            },
+            "required": ["path"],
         },
     },
 }
