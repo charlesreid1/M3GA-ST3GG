@@ -11,7 +11,10 @@ from typing import Any
 from PIL import Image
 
 import analysis_tools as at
+import audio_core
 import img_core
+import metadata_core as _metadata
+import pdf_core
 
 from ._common import (
     CHANNEL_PRESETS,
@@ -240,7 +243,7 @@ _CARVE_DECODERS = {
     "pcap_http_header": "pcap_decode_http_header",
     "pcap_covert_timing": "pcap_decode_covert_timing",
     "jpeg": "jpeg_decode",
-    "audio_lsb": "audio_lsb_decode",
+    "audio_lsb": audio_core.audio_lsb_decode,
 }
 
 
@@ -307,10 +310,13 @@ async def execute_carve(
         raw: dict[str, Any] = {}
         errors: dict[str, str] = {}
         for name in selected:
-            fn_name = _CARVE_DECODERS[name]
-            fn = getattr(at, fn_name, None)
+            fn_ref = _CARVE_DECODERS[name]
+            if callable(fn_ref):
+                fn = fn_ref
+            else:
+                fn = getattr(at, fn_ref, None)
             if fn is None:
-                errors[name] = f"{fn_name} not available in analysis_tools"
+                errors[name] = f"{fn_ref if isinstance(fn_ref, str) else name} not available"
                 continue
             try:
                 raw[name] = fn(segment)
@@ -1176,6 +1182,821 @@ async def execute_inject_exif(
 
 
 # ---------------------------------------------------------------------------
+# stegg_jsteg_encode / stegg_jsteg_decode / stegg_jsteg_capacity
+# ---------------------------------------------------------------------------
+
+
+async def execute_jsteg_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload in a JPEG via JSteg — sequential LSB of nonzero DCT coefficients.
+
+    JSteg is the simplest JPEG steg algorithm. Unlike F5, there is no key,
+    no matrix encoding, and no permutation — it's a straight sequential LSB
+    replacement over nonzero AC coefficients (skipping 0 and ±1).
+    """
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_jsteg_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_jsteg_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_jsteg_encode error: invalid 'payload_hex': {exc}"
+
+    def work():
+        cap = img_core.jsteg_capacity_bytes(data)
+        if len(payload) > cap:
+            return {"__err__": (
+                f"payload is {len(payload)} bytes but JSteg carrier has only "
+                f"{cap} usable bytes."
+            )}
+        try:
+            encoded = img_core.jsteg_encode(data, payload)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {
+            "encoded_bytes": encoded,
+            "capacity_bytes": cap,
+            "payload_bytes": len(payload),
+        }
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_jsteg_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("jsteg_encode failed")
+        return f"stegg_jsteg_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_jsteg_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(meta, ext="jpg")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_jsteg_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "JSteg"},
+        "capacity_bytes": result["capacity_bytes"],
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into JPEG carrier via JSteg. "
+            f"wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+async def execute_jsteg_decode(
+    path: str,
+    **_kw,
+) -> str:
+    """Recover a payload previously hidden with stegg_jsteg_encode."""
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        try:
+            payload = img_core.jsteg_decode(data)
+        except Exception as exc:
+            return {"decoded": False, "error": str(exc)}
+        out: dict[str, Any] = {
+            "decoded": True,
+            "size": len(payload),
+            "payload_hex": payload.hex(),
+        }
+        try:
+            out["payload_utf8"] = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        return out
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_jsteg_decode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("jsteg_decode failed")
+        return f"stegg_jsteg_decode error: {exc}"
+    return truncate_json(result)
+
+
+async def execute_jsteg_capacity(
+    path: str,
+    **_kw,
+) -> str:
+    """Report how many payload bytes fit under JSteg DCT embedding for a JPEG."""
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        return img_core.jsteg_capacity(data)
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_jsteg_capacity timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("jsteg_capacity failed")
+        return f"stegg_jsteg_capacity error: {exc}"
+    return truncate_json(result)
+
+
+# ---------------------------------------------------------------------------
+# stegg_audio_lsb_encode
+# ---------------------------------------------------------------------------
+
+
+async def execute_audio_lsb_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload in a WAV file's 16-bit PCM sample LSBs."""
+    data, meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_audio_lsb_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_audio_lsb_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_audio_lsb_encode error: invalid 'payload_hex': {exc}"
+
+    def work():
+        try:
+            encoded = audio_core.audio_lsb_encode(data, payload)
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {
+            "encoded_bytes": encoded,
+            "payload_bytes": len(payload),
+        }
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_audio_lsb_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("audio_lsb_encode failed")
+        return f"stegg_audio_lsb_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_audio_lsb_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(meta, ext="wav")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_audio_lsb_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "audio_lsb"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into WAV carrier via "
+            f"audio LSB. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
+# stegg_write_image_metadata
+# ---------------------------------------------------------------------------
+
+_METADATA_FORMATS = {"exif", "xmp", "iptc", "icc", "png_text"}
+
+
+async def execute_write_image_metadata(
+    path: str,
+    format: str,
+    content: str | dict,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Write metadata to a JPEG or PNG image.
+
+    Supports EXIF (via piexif), XMP, IPTC, ICC, and PNG tEXt.
+    """
+    data, file_meta, err = read_bytes(path)
+    if err:
+        return err
+
+    fmt = (format or "").lower()
+    if fmt not in _METADATA_FORMATS:
+        return (
+            f"stegg_write_image_metadata error: unknown format '{format}'. "
+            f"Use one of: {', '.join(sorted(_METADATA_FORMATS))}"
+        )
+
+    if fmt == "exif":
+        if not isinstance(content, dict):
+            return "stegg_write_image_metadata: 'content' must be an object of piexif tags for format='exif'"
+    elif fmt == "xmp":
+        if not isinstance(content, str):
+            return "stegg_write_image_metadata: 'content' must be an XML string for format='xmp'"
+    elif fmt == "iptc":
+        if not isinstance(content, dict):
+            return "stegg_write_image_metadata: 'content' must be an object of tag→value for format='iptc'"
+    elif fmt == "icc":
+        if isinstance(content, str):
+            content_bytes = content.encode("utf-8")
+        elif isinstance(content, (bytes, bytearray)):
+            content_bytes = bytes(content)
+        else:
+            return "stegg_write_image_metadata: 'content' must be a string or bytes for format='icc'"
+        content = content_bytes
+    elif fmt == "png_text":
+        if not isinstance(content, dict):
+            return "stegg_write_image_metadata: 'content' must be an object of keyword→text for format='png_text'"
+
+    def work():
+        try:
+            return _metadata.write_metadata(data, fmt, content)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_write_image_metadata timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("write_image_metadata failed")
+        return f"stegg_write_image_metadata error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_write_image_metadata: {result['__err__']}"
+
+    out_path = output_path or default_output_path(file_meta)
+    try:
+        Path(out_path).write_bytes(result)
+    except Exception as exc:
+        return f"stegg_write_image_metadata: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "input_bytes": len(data),
+        "output_bytes": len(result),
+        "config": {"format": fmt},
+        "text": (
+            f"wrote {fmt} metadata. "
+            f"file size before/after: {len(data)} -> {len(result)} bytes. "
+            f"wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
+# stegg_pdf_smuggle
+# ---------------------------------------------------------------------------
+
+
+async def execute_pdf_smuggle(
+    message: str | None = None,
+    payload_hex: str | None = None,
+    method: str = "between_objects",
+    cover_text: str = "This page intentionally left blank.",
+    page_count: int = 2,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Create a PDF with a hidden payload via pypdf.
+
+    Builds a multi-page PDF with the payload hidden using one of three
+    smuggling strategies: invisible_text, marked_content, between_objects.
+    """
+    if (message is None) == (payload_hex is None):
+        return "stegg_pdf_smuggle error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_pdf_smuggle error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_pdf_smuggle error: invalid 'payload_hex': {exc}"
+
+    def work():
+        try:
+            pdf_bytes = pdf_core.pdf_smuggle(
+                payload, method=method, cover_text=cover_text, page_count=page_count
+            )
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {"encoded_bytes": pdf_bytes, "payload_bytes": len(payload)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_pdf_smuggle timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("pdf_smuggle failed")
+        return f"stegg_pdf_smuggle error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_pdf_smuggle: {result['__err__']}"
+
+    out_path = output_path or default_output_path({}, ext="pdf")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_pdf_smuggle: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": f"pdf_{method}"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into a PDF via "
+            f"{method}. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
+# stegg_apng_fdat_encode / stegg_apng_fdat_decode
+# ---------------------------------------------------------------------------
+
+
+async def execute_apng_fdat_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload as a stray fdAT chunk in an APNG.
+
+    Adds acTL, fcTL, and an orphaned fdAT chunk containing the payload.
+    APNG renderers only display frame 0 — the fdAT chunk is invisible.
+    """
+    data, file_meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_apng_fdat error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_apng_fdat error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_apng_fdat error: invalid 'payload_hex': {exc}"
+
+    def work():
+        try:
+            encoded = img_core.apng_fdat_encode(data, payload)
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {"encoded_bytes": encoded, "payload_bytes": len(payload)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_apng_fdat timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("apng_fdat_encode failed")
+        return f"stegg_apng_fdat error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_apng_fdat: {result['__err__']}"
+
+    out_path = output_path or default_output_path(file_meta, ext="png")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_apng_fdat: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "apng_fdAT"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into APNG via "
+            f"orphaned fdAT chunk. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+async def execute_apng_fdat_decode(
+    path: str,
+    **_kw,
+) -> str:
+    """Recover a payload hidden by stegg_apng_fdat."""
+    data, _meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        try:
+            return img_core.apng_fdat_decode(data)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_apng_fdat_decode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("apng_fdat_decode failed")
+        return f"stegg_apng_fdat_decode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_apng_fdat_decode: {result['__err__']}"
+
+    payload = result if isinstance(result, (bytes, bytearray)) else b""
+    try:
+        text = payload.decode("utf-8")
+        is_text = True
+    except UnicodeDecodeError:
+        text = payload.hex()
+        is_text = False
+
+    return truncate_json({
+        "payload_bytes": len(payload),
+        "payload_hex": payload.hex(),
+        "payload_text": text if is_text else None,
+        "text": (
+            f"extracted {len(payload)} bytes from APNG: "
+            + (text[:200] if is_text else f"hex:{payload[:40].hex()}...")
+        ),
+    })
+
+
+# ---------------------------------------------------------------------------
+# stegg_gif_comment_encode
+# ---------------------------------------------------------------------------
+
+
+async def execute_gif_comment_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload in a GIF's comment extension blocks (0x21 0xFE).
+
+    GIF89a comment extensions are arbitrary, renderer-ignored blocks.
+    The payload is chunked into 255-byte sub-blocks per the GIF spec.
+    """
+    data, file_meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_gif_comment_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_gif_comment_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_gif_comment_encode error: invalid 'payload_hex': {exc}"
+
+    def work():
+        try:
+            encoded = img_core.gif_comment_encode(data, payload)
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {"encoded_bytes": encoded, "payload_bytes": len(payload)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_gif_comment_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("gif_comment_encode failed")
+        return f"stegg_gif_comment_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_gif_comment_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(file_meta, ext="gif")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_gif_comment_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "gif_comment"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into GIF comment "
+            f"extension. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
+# stegg_gif_palette_encode
+# ---------------------------------------------------------------------------
+
+
+async def execute_gif_palette_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Hide a payload in the LSBs of a GIF's global colour table entries."""
+    data, file_meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_gif_palette_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_gif_palette_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_gif_palette_encode error: invalid 'payload_hex': {exc}"
+
+    def work():
+        try:
+            encoded = img_core.gif_palette_lsb_encode(data, payload)
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {"encoded_bytes": encoded, "payload_bytes": len(payload)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_gif_palette_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("gif_palette_encode failed")
+        return f"stegg_gif_palette_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_gif_palette_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(file_meta, ext="gif")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_gif_palette_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": "gif_palette_lsb"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into GIF palette "
+            f"LSBs. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
+# stegg_gif_comment_decode
+# ---------------------------------------------------------------------------
+
+
+async def execute_gif_comment_decode(
+    path: str,
+    **_kw,
+) -> str:
+    """Recover a payload hidden by stegg_gif_comment_encode."""
+    data, _meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        try:
+            return img_core.gif_comment_decode(data)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_gif_comment_decode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("gif_comment_decode failed")
+        return f"stegg_gif_comment_decode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_gif_comment_decode: {result['__err__']}"
+
+    payload = result if isinstance(result, (bytes, bytearray)) else b""
+    try:
+        text = payload.decode("utf-8")
+        is_text = True
+    except UnicodeDecodeError:
+        text = payload.hex()
+        is_text = False
+
+    return truncate_json({
+        "payload_bytes": len(payload),
+        "payload_hex": payload.hex(),
+        "payload_text": text if is_text else None,
+        "text": (
+            f"extracted {len(payload)} bytes from GIF comment extensions: "
+            + (text[:200] if is_text else f"hex:{payload[:40].hex()}...")
+        ),
+    })
+
+
+# ---------------------------------------------------------------------------
+# stegg_gif_palette_decode
+# ---------------------------------------------------------------------------
+
+
+async def execute_gif_palette_decode(
+    path: str,
+    **_kw,
+) -> str:
+    """Recover a payload hidden by stegg_gif_palette_encode.
+
+    Reads LSBs from the GIF global colour table entries.
+    """
+    data, _meta, err = read_bytes(path)
+    if err:
+        return err
+
+    def work():
+        try:
+            return img_core.gif_palette_lsb_decode(data)
+        except Exception as exc:
+            return {"__err__": str(exc)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_gif_palette_decode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("gif_palette_decode failed")
+        return f"stegg_gif_palette_decode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_gif_palette_decode: {result['__err__']}"
+
+    payload = result if isinstance(result, (bytes, bytearray)) else b""
+    try:
+        text = payload.decode("utf-8")
+        is_text = True
+    except UnicodeDecodeError:
+        text = payload.hex()
+        is_text = False
+
+    return truncate_json({
+        "payload_bytes": len(payload),
+        "payload_hex": payload.hex(),
+        "payload_text": text if is_text else None,
+        "text": (
+            f"extracted {len(payload)} bytes from GIF palette LSBs: "
+            + (text[:200] if is_text else f"hex:{payload[:40].hex()}...")
+        ),
+    })
+
+
+# ---------------------------------------------------------------------------
+# stegg_polyglot_encode
+# ---------------------------------------------------------------------------
+
+
+async def execute_polyglot_encode(
+    path: str,
+    message: str | None = None,
+    payload_hex: str | None = None,
+    method: str = "png_zip",
+    output_path: str | None = None,
+    **_kw,
+) -> str:
+    """Create a PNG+ZIP or ZIP+PNG polyglot with a hidden payload.
+
+    *path* is the cover PNG file. The payload is stored inside a ZIP archive
+    and concatenated with the cover PNG.
+    """
+    data, file_meta, err = read_bytes(path)
+    if err:
+        return err
+
+    if (message is None) == (payload_hex is None):
+        return "stegg_polyglot_encode error: provide exactly one of 'message' or 'payload_hex'"
+
+    if message is not None:
+        if not isinstance(message, str):
+            return "stegg_polyglot_encode error: 'message' must be a string"
+        payload = message.encode("utf-8")
+    else:
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except (ValueError, TypeError) as exc:
+            return f"stegg_polyglot_encode error: invalid 'payload_hex': {exc}"
+
+    if method not in ("png_zip", "zip_png"):
+        return f"stegg_polyglot_encode error: unknown method '{method}'. Use 'png_zip' or 'zip_png'."
+
+    def work():
+        try:
+            if method == "png_zip":
+                encoded = img_core.polyglot_png_zip_encode(payload, data)
+            else:
+                encoded = img_core.polyglot_zip_png_encode(payload, data)
+        except ValueError as exc:
+            return {"__err__": str(exc)}
+        except Exception as exc:
+            return {"__err__": str(exc)}
+        return {"encoded_bytes": encoded, "payload_bytes": len(payload)}
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_polyglot_encode timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("polyglot_encode failed")
+        return f"stegg_polyglot_encode error: {exc}"
+
+    if isinstance(result, dict) and "__err__" in result:
+        return f"stegg_polyglot_encode: {result['__err__']}"
+
+    out_path = output_path or default_output_path(file_meta, ext="png")
+    try:
+        Path(out_path).write_bytes(result["encoded_bytes"])
+    except Exception as exc:
+        return f"stegg_polyglot_encode: failed to write {out_path}: {exc}"
+
+    summary = {
+        "output_path": str(Path(out_path).resolve()),
+        "output_bytes": len(result["encoded_bytes"]),
+        "config": {"method": f"polyglot_{method}"},
+        "payload_bytes": result["payload_bytes"],
+        "text": (
+            f"stashed {result['payload_bytes']} bytes into a {method} "
+            f"polyglot. wrote {out_path}."
+        ),
+    }
+    return truncate_json(summary)
+
+
+# ---------------------------------------------------------------------------
 # Registry: colocated executors + schemas
 # ---------------------------------------------------------------------------
 EXECUTORS = {
@@ -1200,6 +2021,19 @@ EXECUTORS = {
     "stegg_f5_encode": execute_f5_encode,
     "stegg_f5_decode": execute_f5_decode,
     "stegg_f5_capacity": execute_f5_capacity,
+    "stegg_jsteg_encode": execute_jsteg_encode,
+    "stegg_jsteg_decode": execute_jsteg_decode,
+    "stegg_jsteg_capacity": execute_jsteg_capacity,
+    "stegg_audio_lsb_encode": execute_audio_lsb_encode,
+    "stegg_write_image_metadata": execute_write_image_metadata,
+    "stegg_pdf_smuggle": execute_pdf_smuggle,
+    "stegg_apng_fdat_encode": execute_apng_fdat_encode,
+    "stegg_apng_fdat_decode": execute_apng_fdat_decode,
+    "stegg_gif_comment_encode": execute_gif_comment_encode,
+    "stegg_gif_comment_decode": execute_gif_comment_decode,
+    "stegg_gif_palette_encode": execute_gif_palette_encode,
+    "stegg_gif_palette_decode": execute_gif_palette_decode,
+    "stegg_polyglot_encode": execute_polyglot_encode,
 }
 
 
@@ -1545,6 +2379,225 @@ SCHEMAS = {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Filesystem path to the JPEG image."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_jsteg_encode": {
+        "description": (
+            "Hide a payload in a JPEG's DCT coefficients via JSteg — sequential "
+            "LSB replacement over nonzero AC coefficients (skipping 0 and ±1 to "
+            "avoid shrinkage). Unlike F5, there is no key, no matrix encoding, and "
+            "no permutation — it's the simplest JPEG steg algorithm. Writes a JPEG "
+            "to output_path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JPEG carrier image."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "output_path": {"type": "string", "description": "Where to write the encoded JPEG."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_jsteg_decode": {
+        "description": (
+            "Recover a payload previously hidden with stegg_jsteg_encode. "
+            "No password needed — JSteg has no key. Returns the payload as "
+            "both hex and (when valid) UTF-8 text."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JSteg-encoded JPEG."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_jsteg_capacity": {
+        "description": (
+            "Report how many payload bytes fit in a JPEG under JSteg embedding. "
+            "Counts nonzero AC coefficients with |v| >= 2 — those are the usable "
+            "ones (0 and ±1 are skipped to avoid shrinkage). Use this before "
+            "stegg_jsteg_encode to check fit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JPEG image."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_audio_lsb_encode": {
+        "description": (
+            "Hide a payload in a WAV audio file by replacing the LSBs of "
+            "16-bit PCM samples. The payload is prefixed with a 32-bit "
+            "big-endian length header so stegg_carve's audio_lsb decoder "
+            "can recover it. Writes the modified WAV to output_path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the WAV carrier."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "output_path": {"type": "string", "description": "Where to write the encoded WAV."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_write_image_metadata": {
+        "description": (
+            "Write metadata to a JPEG or PNG image. Supports EXIF (via piexif), "
+            "XMP (hand-rolled XML writer), IPTC (IIM binary records), ICC "
+            "(opaque profile bytes), and PNG tEXt (keyword→value). "
+            "The 'content' parameter format depends on the chosen 'format'."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the JPEG or PNG."},
+                "format": {"type": "string", "description": "exif, xmp, iptc, icc, or png_text."},
+                "content": {"description": "Format-dependent: object of piexif tags (exif), XML string (xmp), object of tag→value (iptc), string/bytes (icc), or object of keyword→text (png_text)."},
+                "output_path": {"type": "string", "description": "Where to write the modified image."},
+            },
+            "required": ["path", "format", "content"],
+        },
+    },
+    "stegg_pdf_smuggle": {
+        "description": (
+            "Create a multi-page PDF with a hidden payload via pypdf. "
+            "Supports three smuggling strategies: invisible_text "
+            "(white-on-white text), marked_content (PDF marked-content "
+            "operators), and between_objects (non-referenced stream "
+            "between indirect objects). No carrier file needed — this "
+            "builds the PDF from scratch."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "method": {"type": "string", "description": "invisible_text, marked_content, or between_objects (default)."},
+                "cover_text": {"type": "string", "description": "Visible cover text for pages (default: 'This page intentionally left blank.')."},
+                "page_count": {"type": "integer", "description": "Number of pages (default: 2)."},
+                "output_path": {"type": "string", "description": "Where to write the generated PDF."},
+            },
+            "required": [],
+        },
+    },
+    "stegg_apng_fdat_encode": {
+        "description": (
+            "Hide a payload as a stray fdAT chunk in an APNG (animated PNG). "
+            "Adds acTL, fcTL, and an orphaned fdAT chunk containing the raw "
+            "payload. APNG renderers only display frame 0 — the orphaned "
+            "fdAT chunk is never rendered. Use stegg_apng_fdat_decode to "
+            "recover the payload."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the PNG carrier."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "output_path": {"type": "string", "description": "Where to write the APNG."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_apng_fdat_decode": {
+        "description": (
+            "Recover a payload previously hidden with stegg_apng_fdat. "
+            "Extracts and concatenates data from all fdAT chunks in the file."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the APNG."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_gif_comment_encode": {
+        "description": (
+            "Hide a payload in a GIF file's comment extension blocks "
+            "(0x21 0xFE). GIF89a comment extensions are arbitrary, "
+            "renderer-ignored blocks. The payload is chunked into "
+            "255-byte sub-blocks per the GIF spec."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the GIF carrier."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "output_path": {"type": "string", "description": "Where to write the modified GIF."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_gif_palette_encode": {
+        "description": (
+            "Hide a payload in the LSBs of a GIF file's global colour table "
+            "entries. Requires the GIF to have a global palette. Each RGB "
+            "triplet yields 3 LSB bits."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the GIF carrier."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "output_path": {"type": "string", "description": "Where to write the modified GIF."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_gif_comment_decode": {
+        "description": (
+            "Recover a payload previously hidden with stegg_gif_comment_encode. "
+            "Extracts and concatenates data from all GIF comment extension blocks."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the GIF file."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_gif_palette_decode": {
+        "description": (
+            "Recover a payload previously hidden with stegg_gif_palette_encode. "
+            "Reads LSBs from the GIF global colour table entries."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the GIF file."},
+            },
+            "required": ["path"],
+        },
+    },
+    "stegg_polyglot_encode": {
+        "description": (
+            "Create a PNG+ZIP or ZIP+PNG polyglot file. 'png_zip' appends a "
+            "ZIP archive (containing the payload) after the PNG IEND chunk — "
+            "the result is a valid PNG and a valid ZIP. 'zip_png' prepends "
+            "the PNG cover before the ZIP data. Writes the polyglot to "
+            "output_path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Filesystem path to the cover PNG."},
+                "message": {"type": "string", "description": "Payload to hide, as a UTF-8 string. Mutually exclusive with payload_hex."},
+                "payload_hex": {"type": "string", "description": "Payload to hide, as a hex string. Mutually exclusive with message."},
+                "method": {"type": "string", "description": "'png_zip' (default) or 'zip_png'."},
+                "output_path": {"type": "string", "description": "Where to write the polyglot file."},
             },
             "required": ["path"],
         },

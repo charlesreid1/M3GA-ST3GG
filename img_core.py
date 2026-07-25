@@ -15,6 +15,7 @@ import zlib
 import struct
 import hashlib
 import secrets
+from pathlib import Path
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from typing import Tuple, List, Optional, Union, Dict, Any
@@ -1820,49 +1821,83 @@ def pvd_decode(
 # raw JPEG bytes (not a :class:`PIL.Image.Image`) because it needs the
 # quantized DCT coefficients from the JPEG bitstream.
 #
+# *data* accepts a file path (``str``) or raw JPEG ``bytes``.
+# *payload* accepts a ``str`` (encoded as UTF-8) or raw ``bytes``.
+#
 # The password string is encoded to UTF-8 internally — callers that need
 # raw byte keys import ``F5Stegg`` directly.
 
 
-def f5_encode(jpeg_bytes: bytes, payload: bytes, *, password: str) -> bytes:
-    """Embed ``payload`` into a JPEG via the F5 algorithm.
+def _to_bytes(data: str | bytes) -> bytes:
+    """Normalise *data* to ``bytes`` — accepts a file path or raw bytes."""
+    if isinstance(data, str):
+        return Path(data).read_bytes()
+    if isinstance(data, bytes):
+        return data
+    raise TypeError(f"expected str (file path) or bytes, got {type(data).__name__}")
+
+
+def _payload_to_bytes(payload: str | bytes) -> bytes:
+    """Normalise *payload* to ``bytes`` — accepts a string or raw bytes."""
+    if isinstance(payload, str):
+        return payload.encode("utf-8")
+    if isinstance(payload, bytes):
+        return payload
+    raise TypeError(f"expected str or bytes, got {type(payload).__name__}")
+
+
+def f5_encode(data: str | bytes, payload: str | bytes, *, password: str) -> bytes:
+    """Embed *payload* into a JPEG via the F5 algorithm.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
 
     Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.F5Error`
     (or a subclass) on failure.
     """
     from f5_core import F5Stegg
 
+    jpeg_bytes = _to_bytes(data)
+    payload_bytes = _payload_to_bytes(payload)
     s = F5Stegg(password.encode("utf-8"))
-    return s.embed(jpeg_bytes, payload)
+    return s.embed(jpeg_bytes, payload_bytes)
 
 
-def f5_decode(jpeg_bytes: bytes, *, password: str) -> bytes:
+def f5_decode(data: str | bytes, *, password: str) -> bytes:
     """Recover an F5-hidden payload from a JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
 
     Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
     on wrong key or corrupt data.
     """
     from f5_core import F5Stegg
 
+    jpeg_bytes = _to_bytes(data)
     s = F5Stegg(password.encode("utf-8"))
     return s.extract(jpeg_bytes)
 
 
-def f5_capacity(jpeg_bytes: bytes) -> dict:
+def f5_capacity(data: str | bytes) -> dict:
     """Analyse a JPEG for F5 capacity without modifying it.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
 
     Returns a dict with keys ``capacity`` (list, index 1..16), ``coeff_total``,
     ``coeff_large``, ``coeff_zero``, ``coeff_one``, and ``coeff_one_ratio``.
     """
     from f5_core import F5Stegg
 
+    jpeg_bytes = _to_bytes(data)
     # analyse is key-agnostic — a dummy key satisfies the constructor.
     s = F5Stegg(b"\x00")
     return s.analyze(jpeg_bytes)
 
 
-def f5_capacity_bytes(jpeg_bytes: bytes, *, k: int | None = None) -> int:
+def f5_capacity_bytes(data: str | bytes, *, k: int | None = None) -> int:
     """Usable F5 payload bytes at matrix-encoding parameter ``k``.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
 
     When ``k`` is *None* (the default), returns the capacity at the
     highest ``k`` that fits, matching the auto-selection behaviour of
@@ -1871,7 +1906,7 @@ def f5_capacity_bytes(jpeg_bytes: bytes, *, k: int | None = None) -> int:
 
     This mirrors :func:`pvd_capacity_bytes` (usable payload bytes).
     """
-    cap = f5_capacity(jpeg_bytes)
+    cap = f5_capacity(data)
     capacities = cap["capacity"]  # list, index 0 unused
     if k is not None:
         if not (1 <= k <= 16):
@@ -1881,6 +1916,63 @@ def f5_capacity_bytes(jpeg_bytes: bytes, *, k: int | None = None) -> int:
     # based on actual payload size, but for the "how much fits?" question
     # the most useful answer is the largest possible payload.
     return max(capacities[1:])
+
+
+# ============== JSteg JPEG DCT ==============
+
+
+def jsteg_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* into a JPEG via JSteg (LSB of nonzero DCT coefficients).
+
+    JSteg is the simplest JPEG steg algorithm: sequentially replaces LSBs of
+    nonzero AC coefficients, skipping 0 and ±1 to avoid shrinkage.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.CapacityExceeded`
+    if the payload does not fit.
+    """
+    from f5_core.jsteg import jsteg_encode as _encode
+
+    jpeg_bytes = _to_bytes(data)
+    payload_bytes = _payload_to_bytes(payload)
+    return _encode(jpeg_bytes, payload_bytes)
+
+
+def jsteg_decode(data: str | bytes) -> bytes:
+    """Recover a JSteg-hidden payload from a JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
+    if the length prefix is corrupt or the carrier is unmodified.
+    """
+    from f5_core.jsteg import jsteg_decode as _decode
+
+    return _decode(_to_bytes(data))
+
+
+def jsteg_capacity(data: str | bytes) -> dict:
+    """Analyse a JPEG for JSteg capacity.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns a dict with keys ``usable_coefficients``, ``usable_bytes``, and
+    ``max_payload_bytes`` (accounting for the 4-byte length prefix).
+    """
+    from f5_core.jsteg import jsteg_capacity as _cap
+
+    return _cap(_to_bytes(data))
+
+
+def jsteg_capacity_bytes(data: str | bytes) -> int:
+    """Maximum JSteg payload bytes that fit in this JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    """
+    cap = jsteg_capacity(data)
+    return cap["max_payload_bytes"]
 
 
 # ============== PNG chunk I/O ==============
@@ -2015,6 +2107,335 @@ def inject_metadata_pil(
         with open(output_path, 'wb') as f:
             f.write(png_bytes)
     return image, png_bytes
+
+
+# ============== CONTAINER SMUGGLING ==============
+#
+# APNG frame smuggling, GIF comment/extension embedding, and polyglot
+# concatenation helpers.  These complement the existing carve/decode
+# paths in analysis_tools.
+#
+# All functions accept file paths (``str``) or raw ``bytes`` for carrier
+# data, and ``str`` (UTF-8 encoded) or raw ``bytes`` for payloads.
+
+
+def gif_comment_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* into GIF comment extension blocks.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    GIF89a comment extensions (0x21 0xFE) are arbitrary, renderer-ignored
+    blocks.  The payload is chunked into 255-byte sub-blocks (GIF's max
+    sub-block size).  Returns the modified GIF as ``bytes``.
+    """
+    gif_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+    if len(gif_bytes) < 6 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    # Insert comment extension after the screen descriptor (first 13 bytes
+    # for GIF89a/GIF87a) but before the first image descriptor (0x2C) or
+    # extension block.
+    header = gif_bytes[:13]
+    rest = gif_bytes[13:]
+
+    # Build comment extension: 0x21 0xFE <sub-blocks...> 0x00
+    comment = bytearray([0x21, 0xFE])
+    for offset in range(0, len(payload), 255):
+        chunk = payload[offset : offset + 255]
+        comment.append(len(chunk))
+        comment.extend(chunk)
+    comment.append(0x00)  # block terminator
+
+    return header + bytes(comment) + rest
+
+
+def gif_palette_lsb_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* in the LSBs of GIF palette entries (if present).
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    The payload is prefixed with a 2-byte big-endian length header so
+    :func:`gif_palette_lsb_decode` knows how many bytes to extract.
+    """
+    gif_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+    if len(gif_bytes) < 13 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    # Frame: 4-byte BE length + payload (same convention as audio_lsb, jsteg).
+    framed = struct.pack(">I", len(payload)) + payload
+
+    packed = gif_bytes[10]
+    if not (packed & 0x80):
+        raise ValueError("GIF has no global colour table")
+    palette_entries = 2 ** ((packed & 0x07) + 1)
+    palette_bytes = palette_entries * 3  # RGB triplets
+    palette_start = 13
+    palette_end = palette_start + palette_bytes
+
+    if palette_end > len(gif_bytes):
+        raise ValueError("GIF truncated in global colour table")
+
+    bits_needed = len(framed) * 8
+    if bits_needed > palette_bytes:
+        raise ValueError(
+            f"payload needs {bits_needed} bits but palette has only "
+            f"{palette_bytes} bytes ({palette_entries} entries)"
+        )
+
+    # Flatten payload bits MSB-first (matching audio_lsb_encode convention).
+    payload_bits: list[int] = []
+    for byte_val in framed:
+        for shift in range(7, -1, -1):
+            payload_bits.append((byte_val >> shift) & 1)
+
+    result = bytearray(gif_bytes)
+    for i in range(bits_needed):
+        if payload_bits[i] != (result[palette_start + i] & 1):
+            result[palette_start + i] ^= 1  # flip LSB
+
+    return bytes(result)
+
+
+def gif_comment_decode(data: str | bytes) -> bytes:
+    """Extract payload from GIF comment extension blocks.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+
+    Finds all comment extension blocks (0x21 0xFE), concatenates their
+    sub-blocks, and returns the combined payload.  Returns empty bytes
+    if no comment extensions are present.
+    """
+    gif_bytes = _to_bytes(data)
+    if len(gif_bytes) < 6 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    payload = bytearray()
+    pos = 13  # skip header + screen descriptor
+    n = len(gif_bytes)
+
+    while pos < n - 1:
+        if gif_bytes[pos] == 0x21 and gif_bytes[pos + 1] == 0xFE:
+            pos += 2  # skip extension introducer + comment label
+            # Read sub-blocks.
+            while pos < n:
+                block_len = gif_bytes[pos]
+                pos += 1
+                if block_len == 0:
+                    break  # block terminator
+                if pos + block_len > n:
+                    break
+                payload.extend(gif_bytes[pos:pos + block_len])
+                pos += block_len
+        elif gif_bytes[pos] == 0x21:
+            # Skip other extension blocks.
+            pos += 2
+            while pos < n:
+                block_len = gif_bytes[pos]
+                pos += 1
+                if block_len == 0:
+                    break
+                if pos + block_len > n:
+                    break
+                pos += block_len
+        elif gif_bytes[pos] == 0x2C:
+            break  # image descriptor — stop
+        elif gif_bytes[pos] == 0x3B:
+            break  # trailer
+        else:
+            pos += 1
+
+    return bytes(payload)
+
+
+def gif_palette_lsb_decode(data: str | bytes) -> bytes:
+    """Extract payload from LSBs of a GIF's global colour table.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+
+    Reads the 4-byte big-endian length prefix from palette LSBs, then
+    extracts that many payload bytes.  Returns empty bytes if no global
+    palette exists or the length prefix is invalid.
+    """
+    gif_bytes = _to_bytes(data)
+    if len(gif_bytes) < 13 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    packed = gif_bytes[10]
+    if not (packed & 0x80):
+        return b""  # no global colour table
+
+    palette_entries = 2 ** ((packed & 0x07) + 1)
+    palette_bytes = palette_entries * 3
+    palette_start = 13
+    palette_end = palette_start + palette_bytes
+    if palette_end > len(gif_bytes):
+        return b""
+
+    # Read all available LSBs from palette.
+    bits: list[int] = []
+    for i in range(palette_start, palette_end):
+        bits.append(gif_bytes[i] & 1)
+
+    # Convert bits to bytes.
+    raw = bytearray()
+    for i in range(0, len(bits) // 8 * 8, 8):
+        v = 0
+        for j in range(8):
+            v = (v << 1) | bits[i + j]
+        raw.append(v)
+
+    # Parse 4-byte BE length prefix (same convention as audio_lsb, jsteg).
+    if len(raw) < 4:
+        return b""
+    payload_len = struct.unpack(">I", bytes(raw[:4]))[0]
+    if payload_len > len(raw) - 4:
+        return b""
+    return bytes(raw[4 : 4 + payload_len])
+
+
+# ---------------------------------------------------------------------------
+# APNG smuggling — acTL / fcTL / fdAT chunk assembly
+# ---------------------------------------------------------------------------
+
+
+def apng_fdat_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Hide *payload* as a stray ``fdAT`` chunk in an APNG.
+
+    *data* may be a file path (``str``) or raw PNG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    Adds an ``acTL`` chunk (declaring 1 frame), an ``fcTL`` chunk for
+    frame 0, and an orphaned ``fdAT`` chunk containing the raw payload
+    bytes.  No ``fcTL`` references ``fdAT``'s sequence number, so APNG
+    renderers ignore it — only :func:`apng_fdat_decode` sees it.
+    """
+    png_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+
+    # Validate PNG signature.
+    if png_bytes[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError("not a valid PNG")
+    sig = png_bytes[:8]
+    rest = png_bytes[8:]
+
+    # IHDR is always the first chunk (25 bytes: 4 len + 4 type + 13 data + 4 crc).
+    ihdr_end = 8 + 25
+    before = png_bytes[:ihdr_end]
+    after_ihdr = png_bytes[ihdr_end:]
+
+    # Read image dimensions from IHDR for fcTL.
+    ihdr_data = png_bytes[16:ihdr_end - 4]  # 13 bytes of IHDR data
+    width = struct.unpack('>I', ihdr_data[0:4])[0]
+    height = struct.unpack('>I', ihdr_data[4:8])[0]
+
+    # acTL: 1 frame, infinite loop (0).
+    actl = _make_chunk(b'acTL', struct.pack('>II', 1, 0))
+
+    # fcTL for frame 0 (the original image).
+    fctl0 = _make_chunk(b'fcTL', struct.pack(
+        '>IIIIIHHBB',
+        0,          # sequence_number
+        width, height,
+        0, 0,        # x_offset, y_offset
+        0, 1,        # delay_num, delay_den (0/1 = no delay)
+        0,           # dispose_op: APNG_DISPOSE_OP_NONE
+        0,           # blend_op: APNG_BLEND_OP_SOURCE
+    ))
+
+    # fdAT: orphaned frame (sequence 1, no matching fcTL).
+    fdat = _make_chunk(b'fdAT', struct.pack('>I', 1) + payload)
+
+    # Insert: sig + IHDR + acTL + fcTL0 + [original chunks between IHDR and IEND] + fdAT
+    # Find IEND position for fdAT insertion.
+    iend_pos = after_ihdr.rfind(b'IEND')
+    if iend_pos == -1:
+        raise ValueError("invalid PNG: IEND chunk not found")
+    iend_pos -= 4  # back up past IEND's length field
+
+    return before + actl + fctl0 + after_ihdr[:iend_pos] + fdat + after_ihdr[iend_pos:]
+
+
+def apng_fdat_decode(data: str | bytes) -> bytes:
+    """Recover the payload from an APNG encoded by :func:`apng_fdat_encode`.
+
+    *data* may be a file path (``str``) or raw PNG ``bytes``.
+
+    Finds all ``fdAT`` chunks, strips the 4-byte sequence-number prefix
+    from each, and returns the concatenated payload.  Returns empty bytes
+    if no ``fdAT`` chunks are present.
+    """
+    png_bytes = _to_bytes(data)
+    payload_parts: list[bytes] = []
+    pos = 8  # skip PNG signature
+
+    while pos < len(png_bytes) - 12:
+        chunk_len = struct.unpack('>I', png_bytes[pos:pos + 4])[0]
+        chunk_type = png_bytes[pos + 4:pos + 8]
+        chunk_data_start = pos + 8
+        chunk_data = png_bytes[chunk_data_start:chunk_data_start + chunk_len]
+
+        if chunk_type == b'fdAT' and chunk_len >= 4:
+            # Strip the 4-byte sequence number.
+            payload_parts.append(chunk_data[4:])
+
+        pos += 12 + chunk_len
+        if chunk_type == b'IEND':
+            break
+
+    return b''.join(payload_parts)
+
+
+def polyglot_png_zip_encode(payload: str | bytes, cover_png: str | bytes) -> bytes:
+    """Create a PNG+ZIP polyglot: a PNG with a ZIP archive appended after IEND.
+
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+    *cover_png* may be a file path (``str``) or raw PNG ``bytes``.
+
+    The *payload* is stored inside a ZIP archive (using stdlib ``zipfile``)
+    and appended to *cover_png*.  The result is a valid PNG (renderers stop
+    at IEND) that also works as a valid ZIP (parsers seek to the EOCD
+    record at end-of-file).
+
+    Use :func:`polyglot_zip_png_encode` for the reverse (ZIP header first).
+    """
+    import zipfile
+    payload = _payload_to_bytes(payload)
+    cover_png = _to_bytes(cover_png)
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("payload.bin", payload)
+    zip_data = zip_buf.getvalue()
+
+    # Check for IEND chunk near the end. PNG files always end with IEND
+    # (length + type + CRC = 12 bytes), so the last 12 bytes contain IEND.
+    if len(cover_png) < 12 or cover_png[-8:-4] != b"IEND":
+        raise ValueError("cover_png does not have IEND chunk at expected position")
+    return cover_png + zip_data
+
+
+def polyglot_zip_png_encode(payload: str | bytes, cover_png: str | bytes) -> bytes:
+    """Create a ZIP+PNG polyglot: a ZIP archive with a PNG prepended.
+
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+    *cover_png* may be a file path (``str``) or raw PNG ``bytes``.
+
+    The result is a valid ZIP (parsers read the EOCD at end-of-file) that
+    also displays as a PNG (tools that check magic bytes at offset 0).
+    """
+    import zipfile
+    payload = _payload_to_bytes(payload)
+    cover_png = _to_bytes(cover_png)
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("payload.bin", payload)
+    zip_data = zip_buf.getvalue()
+    return cover_png + zip_data
 
 
 # ============== LEGACY COMPATIBILITY ==============

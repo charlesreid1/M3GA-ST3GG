@@ -9,12 +9,14 @@ Non-JPEG input and CMYK JPEGs are rejected.
 
 from __future__ import annotations
 
+import io
 import pytest
 
 # Skip the whole module cleanly if jpeglib isn't installed.
 pytest.importorskip("jpeglib")
 
 import numpy as np
+from PIL import Image
 
 from f5_core import InvalidJPEG
 from f5_core._dct import load_coeffs, save_coeffs
@@ -23,11 +25,14 @@ from f5_core._dct import load_coeffs, save_coeffs
 # ---------- Fixtures ----------
 
 @pytest.fixture(scope="module")
-def clean_jpeg_bytes(repo_root) -> bytes:
-    """Repo-level clean.jpg — the sanctioned starting JPEG for F5 tests."""
-    p = repo_root / "clean.jpg"
-    assert p.exists(), f"missing {p}; F5 tests need repo-root clean.jpg"
-    return p.read_bytes()
+def clean_jpeg_bytes() -> bytes:
+    """Generate a fixed-seed JPEG with non-trivial DCT coefficients."""
+    rng = np.random.RandomState(42)
+    pixels = rng.randint(0, 256, (128, 128, 3), dtype=np.uint8)
+    img = Image.fromarray(pixels)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
 
 
 # ---------- Round-trip ----------
