@@ -4,12 +4,13 @@ STEGOSAURUS WRECKS - Command Line Interface
 🦕 The most epic steg tool of all time 🦕
 
 Usage:
-    steg encode -i image.png -t "secret message" -o output.png
-    steg decode -i encoded.png
-    steg analyze image.png
-    steg inject --help
+    stegg encode -i image.png -t "secret message" -o output.png
+    stegg decode -i encoded.png
+    stegg analyze image.png
+    stegg inject --help
 """
 
+import json
 import os
 import sys
 import time
@@ -17,6 +18,8 @@ import typer
 from pathlib import Path
 from typing import Optional, List, Tuple
 from enum import Enum
+
+import numpy as np
 
 from rich.console import Console
 from rich.panel import Panel
@@ -37,7 +40,10 @@ from img_core import (
     detect_encoding, CHANNEL_PRESETS, EncodingStrategy,
     dct_encode, dct_decode, dct_capacity, DCT_STRENGTHS,
     f5_encode, f5_decode, f5_capacity, f5_capacity_bytes,
+    inject_text_chunk, inject_itxt_chunk, inject_private_chunk,
+    read_png_chunks, extract_text_chunks, inject_metadata_pil,
 )
+from analysis_tools import execute_action, list_available_tools
 try:
     from specter import (
         specter_lsb_encode, specter_lsb_decode,
@@ -73,10 +79,38 @@ from matryoshka_core import (
     plan_nesting, is_image_data, DecodeLayer, LayerReport,
 )
 
+# ---------------------------------------------------------------------------
+# JSON output helpers (for --json mode — agent/subprocess consumption)
+# ---------------------------------------------------------------------------
+
+
+class _NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.bool_,)): return bool(obj)
+        if isinstance(obj, (np.integer,)): return int(obj)
+        if isinstance(obj, (np.floating,)): return float(obj)
+        if isinstance(obj, np.ndarray): return obj.tolist()
+        return super().default(obj)
+
+
+def _out_json(obj):
+    """Emit a JSON result to stdout and exit cleanly."""
+    print(json.dumps(obj, cls=_NumpyEncoder))
+    raise typer.Exit(0)
+
+
+def _try_decode_utf8(data: bytes) -> str | None:
+    """Return UTF-8 decoded text, or None if binary."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 # Initialize
 console = Console()
 app = typer.Typer(
-    name="steg",
+    name="stegg",
     help="🦕 STEGOSAURUS WRECKS - Ultimate Steganography Suite",
     add_completion=False,
     rich_markup_mode="rich",
@@ -143,16 +177,23 @@ def info(msg: str):
 # ============== MAIN COMMAND ==============
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(
+    ctx: typer.Context,
+    json_mode: bool = typer.Option(False, "--json", help="Output JSON to stdout (for agent/script consumption)"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output (suppress banner/spinners/footer)"),
+):
     """
     🦕 STEGOSAURUS WRECKS - Ultimate Steganography Suite
 
     Hide data in images using LSB steganography with style.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["json_mode"] = json_mode
+    ctx.obj["quiet"] = quiet or json_mode  # --json implies --quiet
     if ctx.invoked_subcommand is None:
         print_banner()
         print_stego()
-        console.print(f"\n[dim]Run [green]steg --help[/green] for usage information[/dim]")
+        console.print(f"\n[dim]Run [green]stegg --help[/green] for usage information[/dim]")
         console.print(FOOTER)
 
 
@@ -160,6 +201,7 @@ def main(ctx: typer.Context):
 
 @app.command()
 def encode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="Input carrier image"),
     output: Path = typer.Option(None, "--output", "-o", help="Output image path"),
     text: Optional[str] = typer.Option(None, "--text", "-t", help="Text to encode"),
@@ -172,18 +214,20 @@ def encode_cmd(
     no_compress: bool = typer.Option(False, "--no-compress", help="Disable compression"),
     inject_filename: bool = typer.Option(False, "--inject-name", "-j", help="Use injection filename"),
     template: Optional[str] = typer.Option(None, "--template", help="Jailbreak template to encode"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
     """
     🔐 Encode data into an image (v3.0 - with CRC32 checksum & auto-detection)
 
     Examples:
-        steg encode -i photo.png -t "secret message" -o hidden.png
-        steg encode -i photo.png -f secret.txt -c RGBA -b 2 -p mypassword
-        steg encode -i photo.png --template pliny_classic -j
-        steg encode -i photo.png -t "spread out" -s spread
-        steg encode -i photo.png -t "random order" -s randomized --seed 12345
+        stegg encode -i photo.png -t "secret message" -o hidden.png
+        stegg encode -i photo.png -f secret.txt -c RGBA -b 2 -p mypassword
+        stegg encode -i photo.png --template pliny_classic -j
+        stegg encode -i photo.png -t "spread out" -s spread
+        stegg encode -i photo.png -t "random order" -s randomized --seed 12345
     """
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
     if not quiet:
         print_banner(small=True)
 
@@ -199,13 +243,11 @@ def encode_cmd(
     # Load payload
     if template:
         payload = get_jailbreak_template(template).encode('utf-8')
-        info(f"Using template: [cyan]{template}[/cyan]")
     elif file:
         if not file.exists():
             error(f"File not found: {file}")
             raise typer.Exit(1)
         payload = file.read_bytes()
-        info(f"Loaded file: [cyan]{file}[/cyan] ({len(payload):,} bytes)")
     else:
         payload = text.encode('utf-8')
 
@@ -219,7 +261,6 @@ def encode_cmd(
     # Load image
     try:
         image = Image.open(input_image)
-        info(f"Loaded image: [cyan]{input_image}[/cyan] ({image.width}x{image.height})")
     except Exception as e:
         error(f"Failed to load image: {e}")
         raise typer.Exit(1)
@@ -233,9 +274,18 @@ def encode_cmd(
         seed=seed,
     )
 
-    # Show capacity
+    # Check capacity
     capacity = calculate_capacity(image, config)
-    if not quiet:
+    if len(payload) > capacity['usable_bytes']:
+        error(f"Payload too large! {len(payload):,} bytes > {capacity['usable_bytes']:,} available")
+        raise typer.Exit(1)
+
+    if not quiet and not json_mode:
+        info(f"Loaded image: [cyan]{input_image}[/cyan] ({image.width}x{image.height})")
+        if template:
+            info(f"Using template: [cyan]{template}[/cyan]")
+        elif file:
+            info(f"Loaded file: [cyan]{file}[/cyan] ({len(payload):,} bytes)")
         console.print(Panel(
             f"[cyan]Capacity:[/cyan] {capacity['human']}\n"
             f"[cyan]Channels:[/cyan] {channel_bar(channels.value)}\n"
@@ -246,46 +296,67 @@ def encode_cmd(
             border_style="green",
         ))
 
-    # Check capacity
-    if len(payload) > capacity['usable_bytes']:
-        error(f"Payload too large! {len(payload):,} bytes > {capacity['usable_bytes']:,} available")
-        raise typer.Exit(1)
-
     # Encrypt if password provided
+    encrypted = False
     if password:
-        with console.status("[cyan]Encrypting payload...[/cyan]", spinner="dots"):
+        if json_mode:
             payload = encrypt(payload, password)
-        success("Payload encrypted")
+            encrypted = True
+        else:
+            with console.status("[cyan]Encrypting payload...[/cyan]", spinner="dots"):
+                payload = encrypt(payload, password)
+            success("Payload encrypted")
+            encrypted = True
 
     # Encode
-    with Progress(
-        SpinnerColumn(style="green"),
-        TextColumn("[green]Encoding...[/green]"),
-        BarColumn(complete_style="green", finished_style="bright_green"),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Encoding", total=100)
-
-        try:
-            for i in range(0, 100, 10):
-                progress.update(task, completed=i)
-                time.sleep(0.05)
-
+    try:
+        if json_mode:
             result = encode(image, payload, config, str(output))
-            progress.update(task, completed=100)
+        else:
+            with Progress(
+                SpinnerColumn(style="green"),
+                TextColumn("[green]Encoding...[/green]"),
+                BarColumn(complete_style="green", finished_style="bright_green"),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Encoding", total=100)
+                for i in range(0, 100, 10):
+                    progress.update(task, completed=i)
+                    time.sleep(0.05)
+                result = encode(image, payload, config, str(output))
+                progress.update(task, completed=100)
+    except Exception as e:
+        error(f"Encoding failed: {e}")
+        raise typer.Exit(1)
 
-        except Exception as e:
-            error(f"Encoding failed: {e}")
-            raise typer.Exit(1)
+    # Output
+    out_size = output.stat().st_size
 
-    # Success output
+    if json_mode:
+        _out_json({
+            "status": "ok",
+            "output": str(output),
+            "output_bytes": out_size,
+            "payload_bytes": len(payload),
+            "capacity": capacity["human"],
+            "capacity_bytes": capacity["usable_bytes"],
+            "encrypted": encrypted,
+            "config": {
+                "channels": channels.value,
+                "bits_per_channel": bits,
+                "strategy": strategy.value,
+                "compress": not no_compress,
+            },
+            "carrier": {"width": image.width, "height": image.height, "mode": image.mode},
+        })
+
     console.print()
     success(f"Data encoded successfully!")
 
     result_panel = Panel(
         f"[green]Output:[/green] {output}\n"
-        f"[green]Size:[/green] {output.stat().st_size:,} bytes\n"
+        f"[green]Size:[/green] {out_size:,} bytes\n"
         f"[green]Payload:[/green] {len(payload):,} bytes\n"
         f"[green]Encrypted:[/green] {'Yes' if password else 'No'}",
         title=f"{STATUS['dino']} [green]Encoding Complete[/green]",
@@ -302,6 +373,7 @@ def encode_cmd(
 
 @app.command()
 def decode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="Encoded image to decode"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for binary data"),
     auto_detect: bool = typer.Option(True, "--auto/--no-auto", "-a", help="Auto-detect encoding config from header"),
@@ -312,17 +384,19 @@ def decode_cmd(
     password: Optional[str] = typer.Option(None, "--password", "-p", help="Decryption password"),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip CRC32 checksum verification"),
     raw: bool = typer.Option(False, "--raw", help="Output raw bytes (hex)"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
     """
     🔓 Decode data from an image (v3.0 - with auto-detection & checksum verification)
 
     Examples:
-        steg decode -i hidden.png                     # Auto-detect config
-        steg decode -i hidden.png --no-auto -c RGBA   # Manual config
-        steg decode -i hidden.png -p mypassword       # With decryption
-        steg decode -i hidden.png -o extracted.bin    # Save to file
+        stegg decode -i hidden.png                     # Auto-detect config
+        stegg decode -i hidden.png --no-auto -c RGBA   # Manual config
+        stegg decode -i hidden.png -p mypassword       # With decryption
+        stegg decode -i hidden.png -o extracted.bin    # Save to file
     """
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
     if not quiet:
         print_banner(small=True)
 
@@ -333,19 +407,23 @@ def decode_cmd(
     # Load image
     try:
         image = Image.open(input_image)
-        info(f"Loaded image: [cyan]{input_image}[/cyan] ({image.width}x{image.height})")
     except Exception as e:
         error(f"Failed to load image: {e}")
         raise typer.Exit(1)
 
+    if not json_mode:
+        info(f"Loaded image: [cyan]{input_image}[/cyan] ({image.width}x{image.height})")
+
     # Auto-detect or use manual config
     config = None
+    detected = False
+    detection = None
     if auto_detect:
-        info("Auto-detecting encoding configuration...")
         detection = detect_encoding(image)
         if detection:
-            success(f"Detected STEG v3 encoding!")
-            if not quiet:
+            detected = True
+            if not quiet and not json_mode:
+                success(f"Detected STEG v3 encoding!")
                 console.print(Panel(
                     f"[cyan]Channels:[/cyan] {', '.join(detection['config']['channels'])}\n"
                     f"[cyan]Bits/Channel:[/cyan] {detection['config']['bits_per_channel']}\n"
@@ -356,24 +434,20 @@ def decode_cmd(
                     title="[green]Detected Configuration[/green]",
                     border_style="green",
                 ))
-            # Use None to let decode() use header config
             config = None
         else:
-            warning("No STEG header detected, using manual config")
+            if not json_mode:
+                warning("No STEG header detected, using manual config")
             config = create_config(
-                channels=channels.value,
-                bits=bits,
-                strategy=strategy.value,
-                seed=seed,
+                channels=channels.value, bits=bits,
+                strategy=strategy.value, seed=seed,
             )
     else:
         config = create_config(
-            channels=channels.value,
-            bits=bits,
-            strategy=strategy.value,
-            seed=seed,
+            channels=channels.value, bits=bits,
+            strategy=strategy.value, seed=seed,
         )
-        if not quiet:
+        if not quiet and not json_mode:
             console.print(Panel(
                 f"[cyan]Channels:[/cyan] {channel_bar(channels.value)}\n"
                 f"[cyan]Bits/Channel:[/cyan] {bits}\n"
@@ -383,22 +457,54 @@ def decode_cmd(
             ))
 
     # Decode
-    with console.status("[cyan]Decoding...[/cyan]", spinner="dots"):
-        try:
+    try:
+        if json_mode:
             data = decode(image, config, verify_checksum=not no_verify)
-        except Exception as e:
-            error(f"Decoding failed: {e}")
-            raise typer.Exit(1)
+        else:
+            with console.status("[cyan]Decoding...[/cyan]", spinner="dots"):
+                data = decode(image, config, verify_checksum=not no_verify)
+    except Exception as e:
+        error(f"Decoding failed: {e}")
+        raise typer.Exit(1)
 
     # Decrypt if password
     if password:
-        with console.status("[cyan]Decrypting...[/cyan]", spinner="dots"):
-            try:
+        try:
+            if json_mode:
                 data = decrypt(data, password)
+            else:
+                with console.status("[cyan]Decrypting...[/cyan]", spinner="dots"):
+                    data = decrypt(data, password)
                 success("Data decrypted")
-            except Exception as e:
-                error(f"Decryption failed: {e}")
-                raise typer.Exit(1)
+        except Exception as e:
+            error(f"Decryption failed: {e}")
+            raise typer.Exit(1)
+
+    # JSON output
+    if json_mode:
+        result = {
+            "status": "ok",
+            "payload_bytes": len(data),
+            "auto_detected": detected,
+        }
+        if detection:
+            result["detected_config"] = {
+                "channels": detection["config"]["channels"],
+                "bits_per_channel": detection["config"]["bits_per_channel"],
+                "strategy": detection["config"]["strategy"],
+                "compression": detection["config"]["compression"],
+            }
+        if output:
+            output.write_bytes(data)
+            result["output"] = str(output)
+        if raw:
+            result["hex"] = data.hex()
+        text = _try_decode_utf8(data)
+        if text is not None:
+            result["text"] = text
+        else:
+            result["hex_preview"] = data[:512].hex()
+        _out_json(result)
 
     success(f"Extracted {len(data):,} bytes")
 
@@ -413,7 +519,6 @@ def decode_cmd(
             border_style="cyan",
         ))
     else:
-        # Try to decode as text
         try:
             text_data = data.decode('utf-8')
             console.print(Panel(
@@ -438,6 +543,7 @@ def decode_cmd(
 
 @app.command()
 def analyze(
+    ctx: typer.Context,
     input_image: Path = typer.Argument(..., help="Image to analyze"),
     full: bool = typer.Option(False, "--full", "-f", help="Full analysis with all channels"),
     recursive: bool = typer.Option(False, "--recursive", "-r", "--matryoshka",
@@ -447,10 +553,14 @@ def analyze(
     🔍 Analyze an image for steganographic content
 
     Examples:
-        steg analyze photo.png
-        steg analyze suspicious.png --full
+        stegg analyze photo.png
+        stegg analyze suspicious.png --full
     """
-    print_banner(small=True)
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if not quiet and not json_mode:
+        print_banner(small=True)
 
     if not input_image.exists():
         error(f"Image not found: {input_image}")
@@ -464,6 +574,35 @@ def analyze(
 
     with console.status("[cyan]Analyzing image...[/cyan]", spinner="dots"):
         analysis = analyze_image(image)
+
+    # JSON output
+    if json_mode:
+        channels_json = {}
+        max_ind = 0.0
+        for ch, d in analysis["channels"].items():
+            lsb = d["lsb_ratio"]
+            ind = d.get("chi_square_indicator", 0.0)
+            max_ind = max(max_ind, ind)
+            channels_json[ch] = {
+                "mean": round(d["mean"], 2),
+                "std": round(d["std"], 2),
+                "lsb_zeros_pct": round(lsb["zeros"] * 100, 1),
+                "lsb_ones_pct": round(lsb["ones"] * 100, 1),
+                "chi_sq_indicator": round(ind, 4),
+                "anomaly": "HIGH" if ind > 0.3 else ("slight" if ind > 0.1 else "normal"),
+            }
+        verdict = ("HIGH PROBABILITY" if max_ind > 0.3
+                   else "Possible" if max_ind > 0.1
+                   else "No indicators")
+        _out_json({
+            "status": "ok",
+            "dimensions": analysis["dimensions"],
+            "mode": analysis["mode"],
+            "pixels": analysis["total_pixels"],
+            "channels": channels_json,
+            "capacity": analysis["capacity_by_config"],
+            "verdict": verdict,
+        })
 
     # Image info
     info_table = Table(show_header=False, box=box.SIMPLE)
@@ -754,6 +893,87 @@ def inject_leet(
     console.print(Panel(result, title="[green]Leetspeak[/green]", border_style="green"))
 
 
+@inject_app.command("chunk")
+def inject_chunk(
+    ctx: typer.Context,
+    input_image: Path = typer.Option(..., "--input", "-i", help="Input PNG image"),
+    output: Path = typer.Option(..., "--output", "-o", help="Output PNG path"),
+    chunk_type: str = typer.Option("tEXt", "--type", help="Chunk type: tEXt, zTXt, iTXt, or a 4-char private type"),
+    keyword: str = typer.Option("Comment", "--keyword", "-k", help="Chunk keyword"),
+    text: str = typer.Option(..., "--text", "-t", help="Text to inject"),
+    compressed: bool = typer.Option(False, "--compressed", help="Use zTXt (compressed)"),
+):
+    """💉 Inject a PNG text or private chunk."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    p = Path(input_image)
+    if not p.exists():
+        error(f"Image not found: {p}")
+        raise typer.Exit(1)
+    raw = p.read_bytes()
+
+    ct = chunk_type
+    if ct == "iTXt":
+        modified = inject_itxt_chunk(raw, keyword, text)
+    elif len(ct) == 4 and ct not in ("tEXt", "zTXt", "iTXt"):
+        modified = inject_private_chunk(raw, ct, text.encode("utf-8"))
+    else:
+        modified = inject_text_chunk(raw, keyword, text, compressed=compressed)
+
+    Path(output).write_bytes(modified)
+
+    if json_mode:
+        _out_json({"status": "ok", "output": str(output), "chunk_type": ct, "keyword": keyword, "bytes": len(text)})
+
+    success(f"Injected {len(text)} bytes as {ct} chunk → {output}")
+
+
+@inject_app.command("exif")
+def inject_exif(
+    ctx: typer.Context,
+    input_image: Path = typer.Option(..., "--input", "-i", help="Input image"),
+    output: Path = typer.Option(..., "--output", "-o", help="Output image path"),
+    comment: str = typer.Option("", "--comment", help="Comment field"),
+    author: str = typer.Option("", "--author", help="Author field"),
+    description: str = typer.Option("", "--description", help="Description field"),
+    title: str = typer.Option("", "--title", help="Title field"),
+    custom_fields: str = typer.Option("", "--custom-fields", help="JSON object of additional key/value pairs"),
+):
+    """💉 Inject EXIF/tEXt metadata into an image via PIL PngInfo."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    p = Path(input_image)
+    if not p.exists():
+        error(f"Image not found: {p}")
+        raise typer.Exit(1)
+
+    meta: dict[str, str] = {}
+    if comment: meta["Comment"] = comment
+    if author: meta["Author"] = author
+    if description: meta["Description"] = description
+    if title: meta["Title"] = title
+    if custom_fields:
+        import json as _json
+        try:
+            meta.update(_json.loads(custom_fields))
+        except _json.JSONDecodeError:
+            error("--custom-fields must be valid JSON")
+            raise typer.Exit(1)
+
+    if not meta:
+        error("Provide at least one metadata field")
+        raise typer.Exit(1)
+
+    image = Image.open(p)
+    _, png_bytes = inject_metadata_pil(image, meta)
+    Path(output).write_bytes(png_bytes)
+
+    if json_mode:
+        _out_json({"status": "ok", "output": str(output), "fields": list(meta.keys())})
+
+    success(f"Injected {len(meta)} metadata field(s) → {output}")
+
+
 # ============== DCT COMMANDS ==============
 
 class DctRobustness(str, Enum):
@@ -768,16 +988,19 @@ app.add_typer(dct_app, name="dct")
 
 @dct_app.command("encode")
 def dct_encode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="Input carrier image"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output PNG path"),
     text: Optional[str] = typer.Option(None, "--text", "-t", help="Text to encode"),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="File to encode"),
     robustness: DctRobustness = typer.Option(DctRobustness.medium, "--robustness", "-r", help="low / medium / high"),
     block_size: int = typer.Option(8, "--block-size", help="DCT block size (default 8)"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
     """🎛  Embed data via DCT (survives JPEG-style recompression at medium/high)."""
-    if not quiet:
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if not quiet and not json_mode:
         print_banner(small=True)
     if not input_image.exists():
         error(f"Input image not found: {input_image}")
@@ -797,7 +1020,7 @@ def dct_encode_cmd(
         raise typer.Exit(1)
 
     cap = dct_capacity(image, block_size=block_size)
-    if not quiet:
+    if not quiet and not json_mode:
         console.print(Panel(
             f"[cyan]Capacity:[/cyan] {cap['human']}\n"
             f"[cyan]Block size:[/cyan] {block_size}\n"
@@ -817,6 +1040,17 @@ def dct_encode_cmd(
         error(f"DCT encoding failed: {e}")
         raise typer.Exit(1)
 
+    if json_mode:
+        _out_json({
+            "status": "ok",
+            "output": str(output),
+            "output_bytes": output.stat().st_size,
+            "payload_bytes": len(payload),
+            "capacity": cap["human"],
+            "capacity_bytes": cap["usable_bytes"],
+            "config": {"method": "DCT", "robustness": robustness.value, "block_size": block_size},
+        })
+
     success(f"DCT-encoded {len(payload):,} bytes → {output}")
     if not quiet:
         console.print(f"\n{FOOTER}")
@@ -824,14 +1058,17 @@ def dct_encode_cmd(
 
 @dct_app.command("decode")
 def dct_decode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="DCT-encoded image"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write recovered bytes here"),
     block_size: int = typer.Option(8, "--block-size", help="DCT block size (default 8)"),
     raw: bool = typer.Option(False, "--raw", help="Output raw bytes (hex)"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
-    """🔎 Recover a payload previously hidden with `steg dct encode`."""
-    if not quiet:
+    """🔎 Recover a payload previously hidden with `stegg dct encode`."""
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if not quiet and not json_mode:
         print_banner(small=True)
     if not input_image.exists():
         error(f"Image not found: {input_image}")
@@ -848,6 +1085,20 @@ def dct_decode_cmd(
     except Exception as e:
         error(f"DCT decoding failed: {e}")
         raise typer.Exit(1)
+
+    if json_mode:
+        result = {"status": "ok", "payload_bytes": len(data)}
+        if output:
+            output.write_bytes(data)
+            result["output"] = str(output)
+        if raw:
+            result["hex"] = data.hex()
+        text = _try_decode_utf8(data)
+        if text is not None:
+            result["text"] = text
+        else:
+            result["hex_preview"] = data[:512].hex()
+        _out_json(result)
 
     success(f"Extracted {len(data):,} bytes via DCT")
 
@@ -910,15 +1161,18 @@ def _check_jpeg(path: Path) -> bytes:
 
 @f5_app.command("encode")
 def f5_encode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="Input JPEG carrier image"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output JPEG path"),
     text: Optional[str] = typer.Option(None, "--text", "-t", help="Text to encode"),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="File to encode"),
     password: str = typer.Option(..., "--password", "-p", help="Password for the F5 keystream"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
     """🎛  Embed data into JPEG DCT coefficients via the F5 algorithm."""
-    if not quiet:
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if not quiet and not json_mode:
         print_banner(small=True)
     if not text and not file:
         error("Must provide --text or --file")
@@ -930,9 +1184,8 @@ def f5_encode_cmd(
     if output is None:
         output = Path(f"steg_f5_{input_image.stem}.jpg")
 
-    # Pre-flight capacity check.
     cap = f5_capacity_bytes(jpeg_bytes)
-    if not quiet:
+    if not quiet and not json_mode:
         info = f5_capacity(jpeg_bytes)
         console.print(Panel(
             f"[cyan]Capacity:[/cyan] {cap:,} bytes\n"
@@ -953,6 +1206,17 @@ def f5_encode_cmd(
         raise typer.Exit(1)
 
     output.write_bytes(result)
+
+    if json_mode:
+        _out_json({
+            "status": "ok",
+            "output": str(output),
+            "output_bytes": len(result),
+            "payload_bytes": len(payload),
+            "capacity_bytes": cap,
+            "config": {"method": "F5"},
+        })
+
     success(f"F5-encoded {len(payload):,} bytes → {output}")
     if not quiet:
         console.print(f"\n{FOOTER}")
@@ -960,14 +1224,17 @@ def f5_encode_cmd(
 
 @f5_app.command("decode")
 def f5_decode_cmd(
+    ctx: typer.Context,
     input_image: Path = typer.Option(..., "--input", "-i", help="F5-encoded JPEG"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write recovered bytes here"),
     password: str = typer.Option(..., "--password", "-p", help="Password used at encode time"),
     raw: bool = typer.Option(False, "--raw", help="Output raw bytes (hex)"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
-    """🔎 Recover a payload previously hidden with `steg dct f5 encode`."""
-    if not quiet:
+    """🔎 Recover a payload previously hidden with `stegg dct f5 encode`."""
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if not quiet and not json_mode:
         print_banner(small=True)
 
     jpeg_bytes = _check_jpeg(input_image)
@@ -977,6 +1244,20 @@ def f5_decode_cmd(
     except Exception as e:
         error(f"F5 decoding failed: {e}")
         raise typer.Exit(1)
+
+    if json_mode:
+        result = {"status": "ok", "payload_bytes": len(data)}
+        if output:
+            output.write_bytes(data)
+            result["output"] = str(output)
+        if raw:
+            result["hex"] = data.hex()
+        text = _try_decode_utf8(data)
+        if text is not None:
+            result["text"] = text
+        else:
+            result["hex_preview"] = data[:512].hex()
+        _out_json(result)
 
     success(f"Extracted {len(data):,} bytes via F5")
 
@@ -1108,6 +1389,23 @@ def text_capacity_cmd(
 
 # ============== 🪆 MATRYOSHKA COMMANDS ==============
 
+# ---------------------------------------------------------------------------
+# 🪆 MATRYOSHKA COMMANDS
+#
+# Naming note: the matryoshka verbs are *embed* and *extract*, not *encode*
+# and *decode*.  The distinction is intentional:
+#
+#   encode  = single-pass LSB/DCT/F5 stego into ONE carrier
+#   embed   = nested multi-layer stego — each layer's carrier becomes the
+#             next layer's payload.  You're embedding a payload inside
+#             multiple carriers, not just encoding it once.
+#   extract = the inverse — recursively peel layers until you reach the
+#             innermost payload.
+#
+# In the matryoshka model, every layer IS an encode step, but the composite
+# action is an *embedding* across a carrier stack.
+# ---------------------------------------------------------------------------
+
 matryoshka_app = typer.Typer(
     name="matryoshka",
     help="🪆 Matryoshka nested-image steganography (Russian nesting dolls)",
@@ -1157,7 +1455,7 @@ def _print_layer_tree(layers: List[DecodeLayer], indent: int = 0):
 
 
 @matryoshka_app.command()
-def encode(
+def embed(
     payload_path: Path = typer.Option(
         ..., "--payload", "-p", help="File to hide (innermost secret)"
     ),
@@ -1177,18 +1475,18 @@ def encode(
         2, "--bits", "-b", help="Bits per channel (1-8)", min=1, max=8
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Print capacity plan only, do not encode"
+        False, "--dry-run", help="Print capacity plan only, do not embed"
     ),
 ):
     """
-    🪆 Encode a payload into a stack of carrier images.
+    🪆 Embed a payload into a stack of carrier images (nested LSB encoding).
 
     Carriers are specified outermost-first (matching the mental model) and
     reversed internally to innermost-first for the encoding engine.
 
     Examples:
-        stegg matryoshka encode -p secret.txt -c inner.png -c outer.png -o nested.png
-        stegg matryoshka encode -p data.bin -c a.png -c b.png -c c.png --dry-run
+        stegg matryoshka embed -p secret.txt -c inner.png -c outer.png -o nested.png
+        stegg matryoshka embed -p data.bin -c a.png -c b.png -c c.png --dry-run
     """
     if not carriers:
         error("At least one --carrier is required")
@@ -1265,8 +1563,8 @@ def _format_size_cli(size_bytes: int | str) -> str:
 
 
 @matryoshka_app.command()
-def decode(
-    image: Path = typer.Argument(..., help="Image to recursively decode"),
+def extract(
+    image: Path = typer.Argument(..., help="Image to recursively extract layers from"),
     password: Optional[str] = typer.Option(
         None, "--password", "-w", help="Decryption password"
     ),
@@ -1278,14 +1576,14 @@ def decode(
     ),
 ):
     """
-    🪆 Recursively decode a Matryoshka-encoded image.
+    🪆 Recursively extract layers from a Matryoshka-encoded image.
 
     Prints a depth-indented tree of discovered layers.  Use --extract-dir
     to write each layer's raw data to disk.
 
     Examples:
-        stegg matryoshka decode nested.png
-        stegg matryoshka decode nested.png -d 5 -e ./layers/
+        stegg matryoshka extract nested.png
+        stegg matryoshka extract nested.png -d 5 -e ./layers/
     """
     if not image.exists():
         error(f"Image not found: {image}")
@@ -1418,6 +1716,182 @@ def info_cmd():
     console.print(f"\n{FOOTER}")
 
 
+# ============== CHUNKS COMMAND ==============
+
+
+@app.command("chunks")
+def chunks_cmd(
+    ctx: typer.Context,
+    image: Path = typer.Argument(..., help="PNG image to read chunks from"),
+):
+    """📦 Read all PNG chunks (type, length, text content for text chunks)."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    p = Path(image)
+    if not p.exists():
+        error(f"Image not found: {p}")
+        raise typer.Exit(1)
+    raw = p.read_bytes()
+    chunks = read_png_chunks(raw)
+    text = extract_text_chunks(raw)
+
+    if json_mode:
+        _out_json({
+            "chunks": [{"type": c.get("type", "?"), "size": c.get("length", 0)} for c in chunks],
+            "text": text,
+            "total": len(chunks),
+        })
+
+    table = Table(title=f"📦 PNG Chunks — {image.name}", box=box.ROUNDED)
+    table.add_column("Type", style="cyan")
+    table.add_column("Length", style="green", justify="right")
+    table.add_column("Content Preview", style="white")
+    for c in chunks:
+        ct = c.get("type", "?")
+        length = c.get("length", 0)
+        preview = ""
+        raw_data = c.get("data")
+        if ct in ("tEXt", "iTXt", "zTXt") and isinstance(raw_data, (bytes, bytearray)):
+            try:
+                preview = raw_data.decode("utf-8", errors="replace")[:80]
+            except Exception:
+                preview = raw_data[:32].hex()
+        table.add_row(ct, f"{length:,}", preview)
+    console.print(table)
+
+    if text:
+        console.print(Panel(
+            "\n".join(f"[cyan]{k}:[/cyan] {v[:120]}" for k, v in text.items()),
+            title="[green]Text Chunks[/green]",
+            border_style="green",
+        ))
+
+
+# ============== ANALYSIS TOOL COMMANDS ==============
+
+
+@app.command("analysis-tool")
+def analysis_tool_cmd(
+    ctx: typer.Context,
+    image: Path = typer.Argument(..., help="File to analyze"),
+    action: str = typer.Argument(..., help="Analysis action name (use list-tools to see available)"),
+):
+    """🔬 Run a specific analysis function on a file."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    p = Path(image)
+    if not p.exists():
+        error(f"File not found: {p}")
+        raise typer.Exit(1)
+
+    result = execute_action(action, p.read_bytes())
+    if json_mode:
+        if hasattr(result, "to_dict"):
+            _out_json(result.to_dict())
+        else:
+            _out_json({"result": str(result)})
+
+    if hasattr(result, "to_dict"):
+        import json as _json
+        console.print(Panel(
+            _json.dumps(result.to_dict(), indent=2, default=str),
+            title=f"[cyan]analysis-tool {action}[/cyan]",
+            border_style="cyan",
+        ))
+    else:
+        console.print(Panel(
+            str(result),
+            title=f"[cyan]analysis-tool {action}[/cyan]",
+            border_style="cyan",
+        ))
+
+
+@app.command("list-tools")
+def list_tools_cmd(ctx: typer.Context):
+    """📋 List all available analysis tool actions."""
+    json_mode = ctx.obj.get("json_mode", False)
+    tools = list_available_tools()
+
+    if json_mode:
+        _out_json({"tools": tools, "count": len(tools)})
+
+    table = Table(title="🔬 Available Analysis Tools", box=box.ROUNDED)
+    table.add_column("Tool", style="cyan")
+    for t in tools:
+        table.add_row(t)
+    console.print(table)
+    info(f"{len(tools)} tools available")
+
+
+# ============== DETECT COMMAND ==============
+
+
+@app.command("detect")
+def detect_cmd(
+    ctx: typer.Context,
+    image: Path = typer.Argument(..., help="Image to check for ST3GG encoding"),
+):
+    """🔍 Quick ST3GG v3 header detection check."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    if not image.exists():
+        error(f"Image not found: {image}")
+        raise typer.Exit(1)
+
+    img = Image.open(image)
+    det = detect_encoding(img)
+
+    if json_mode:
+        _out_json({"detected": bool(det), "config": det} if det else {"detected": False})
+
+    if det:
+        success(f"Detected: {det['config']['channels']}, {det['config']['bits_per_channel']} bits/ch, "
+                f"{det['config']['strategy']}, payload={det['payload_length']}B")
+    else:
+        info("No ST3GG encoding header detected")
+
+
+# ============== CAPACITY COMMAND ==============
+
+
+@app.command("capacity")
+def capacity_cmd(
+    ctx: typer.Context,
+    image: Path = typer.Argument(..., help="Image to measure"),
+    channels: ChannelPreset = typer.Option(ChannelPreset.RGB, "--channels", "-c", help="Channel preset"),
+    bits: int = typer.Option(1, "--bits", "-b", help="Bits per channel (1-8)", min=1, max=8),
+):
+    """📏 Report LSB payload capacity for an image."""
+    json_mode = ctx.obj.get("json_mode", False)
+
+    if not image.exists():
+        error(f"Image not found: {image}")
+        raise typer.Exit(1)
+
+    img = Image.open(image)
+    config = create_config(channels=channels.value, bits=bits)
+    cap = calculate_capacity(img, config)
+
+    if json_mode:
+        _out_json({
+            "usable_bytes": cap["usable_bytes"],
+            "human": cap["human"],
+            "pixels": img.width * img.height,
+            "config": {"channels": channels.value, "bits_per_channel": bits},
+        })
+
+    table = Table(show_header=False, box=box.SIMPLE)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value")
+    table.add_row("Dimensions", f"{img.width} x {img.height}")
+    table.add_row("Pixels", f"{img.width * img.height:,}")
+    table.add_row("Channels", channels.value)
+    table.add_row("Bits/channel", str(bits))
+    table.add_row("Usable bytes", f"{cap['usable_bytes']:,}")
+    table.add_row("Capacity", cap["human"])
+    console.print(Panel(table, title="[cyan]LSB Capacity[/cyan]", border_style="cyan"))
+
+
 # ============== SPECTER CHANNEL CIPHER ==============
 
 specter_app = typer.Typer(help="🔄 SPECTER channel-cipher steganography (cross-channel hopping)")
@@ -1441,10 +1915,10 @@ def specter_encode_cmd(
     """🔄 Embed data using SPECTER channel-hopping cipher.
 
     Examples:
-        steg specter encode -i photo.png -t "secret" --pattern R1-G2-B1 -o out.png
-        steg specter encode -i photo.png -t "secret" --password mypass -o out.png
-        steg specter encode -i photo.png -t "secret" --password mypass --ghost -o ghost.png
-        steg specter encode -i photo.png -t "secret" --pattern R1-G2-B1 --mode dct -o dct.png
+        stegg specter encode -i photo.png -t "secret" --pattern R1-G2-B1 -o out.png
+        stegg specter encode -i photo.png -t "secret" --password mypass -o out.png
+        stegg specter encode -i photo.png -t "secret" --password mypass --ghost -o ghost.png
+        stegg specter encode -i photo.png -t "secret" --pattern R1-G2-B1 --mode dct -o dct.png
     """
     if not quiet:
         print_banner(small=True)
@@ -1543,12 +2017,12 @@ def specter_decode_cmd(
     raw: bool = typer.Option(False, "--raw", help="Output raw bytes (hex)"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
 ):
-    """🔎 Recover data hidden with `steg specter encode`.
+    """🔎 Recover data hidden with `stegg specter encode`.
 
     Examples:
-        steg specter decode -i hidden.png --key R1-G2-B1
-        steg specter decode -i hidden.png --key mypassword
-        steg specter decode -i ghost.png --key mypassword --password mypassword
+        stegg specter decode -i hidden.png --key R1-G2-B1
+        stegg specter decode -i hidden.png --key mypassword
+        stegg specter decode -i ghost.png --key mypassword --password mypassword
     """
     if not quiet:
         print_banner(small=True)
