@@ -10,10 +10,13 @@ Node-interop test that runs when ``node`` is available.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
+from PIL import Image
 
 pytest.importorskip("jpeglib")
 
@@ -26,8 +29,14 @@ FIX_DIR = Path(__file__).parent / "fixtures" / "f5" / "jpeg"
 # ---------- Python round-trip ------------------------------------------
 
 @pytest.fixture(scope="module")
-def clean_jpeg_bytes(repo_root) -> bytes:
-    return (repo_root / "clean.jpg").read_bytes()
+def clean_jpeg_bytes() -> bytes:
+    """Generate a fixed-seed JPEG with non-trivial DCT coefficients."""
+    rng = np.random.RandomState(42)
+    pixels = rng.randint(0, 256, (128, 128, 3), dtype=np.uint8)
+    img = Image.fromarray(pixels)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
 
 
 @pytest.mark.parametrize("payload", [

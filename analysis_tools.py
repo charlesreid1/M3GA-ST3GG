@@ -38,6 +38,7 @@ except ImportError:
     HAS_PIL = False
 
 import text_core
+import audio_core
 
 
 # ============== CORE INFRASTRUCTURE ==============
@@ -2349,42 +2350,6 @@ def detect_skintone_steg(data: bytes) -> Dict[str, Any]:
     return results
 
 
-# ============== AUDIO STEGANOGRAPHY ==============
-
-def audio_lsb_decode(data: bytes) -> Dict[str, Any]:
-    """Decode LSB steganography from WAV audio files."""
-    import wave
-    try:
-        w = wave.open(io.BytesIO(data))
-        raw = w.readframes(w.getnframes())
-        sampwidth = w.getsampwidth()
-        w.close()
-        if sampwidth != 2:
-            return {'found': False, 'reason': f'Sample width {sampwidth} not supported'}
-        samples = struct.unpack(f'<{len(raw)//2}h', raw)
-        bits = [s & 1 for s in samples]
-        if len(bits) < 32:
-            return {'found': False}
-        length = 0
-        for i in range(32):
-            length = (length << 1) | bits[i]
-        if length <= 0 or length > min(10000, (len(bits) - 32) // 8):
-            return {'found': False, 'reason': f'Invalid length: {length}'}
-        msg = bytearray()
-        for i in range(0, length * 8, 8):
-            v = 0
-            for j in range(8):
-                if 32 + i + j < len(bits):
-                    v = (v << 1) | bits[32 + i + j]
-            msg.append(v)
-        decoded = msg.decode('utf-8', errors='replace')
-        return {'found': True, 'method': 'audio_lsb', 'length': length,
-                'message': decoded[:200], 'suspicious': True,
-                'findings': [f'Audio LSB ({length} bytes): {decoded[:80]}']}
-    except Exception as e:
-        return {'error': str(e), 'found': False}
-
-
 # ============== PCAP / NETWORK PROTOCOL DECODERS ==============
 
 def pcap_decode(data: bytes) -> Dict[str, Any]:
@@ -3183,7 +3148,10 @@ def _register_all_tools():
     # Advanced steganalysis
     TOOL_REGISTRY.register('rs_analysis', rs_analysis)
     TOOL_REGISTRY.register('sample_pairs_analysis', sample_pairs_analysis)
-    TOOL_REGISTRY.register('audio_lsb_decode', audio_lsb_decode)
+    # Audio
+    TOOL_REGISTRY.register('audio_lsb_decode', audio_core.audio_lsb_decode)
+    TOOL_REGISTRY.register('audio_lsb_encode', audio_core.audio_lsb_encode)
+    # Network
     TOOL_REGISTRY.register('pcap_decode', pcap_decode)
     TOOL_REGISTRY.register('pcap_decode_ip_ttl', pcap_decode_ip_ttl)
     TOOL_REGISTRY.register('pcap_decode_ip_id', pcap_decode_ip_id)
