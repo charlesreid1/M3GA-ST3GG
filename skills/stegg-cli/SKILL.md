@@ -5,26 +5,26 @@ description: "Subprocess CLI for ST3GG steganography — encode/decode, steganal
 
 # ST3GG CLI
 
-Subprocess steganography CLI. Output stays out of LLM context — call via `python3 stegg_cli.py <command>`. All output is JSON.
+Subprocess steganography CLI. Output stays out of LLM context — invoke as `stegg --json <command>`. All output is JSON.
 
 **This is the primary interface for steganography operations.** Prefer this over the MCP server for routine use (zero context cost). Fall back to MCP tools when you need results inline.
 
 ## Commands
 
 ```
-encode        -i IMAGE [-t TEXT|-f FILE] [-o OUT] [--channels C] [--bits N] [--password P]
-decode        -i IMAGE [-o OUT] [--no-auto] [--channels C] [--bits N] [--password P]
-analyze       IMAGE [--full]
-detect        IMAGE
-capacity      IMAGE [--channels C] [--bits N]
-inject-chunk  -i IMAGE -o OUT --text TEXT [--type tEXt] [--keyword Comment]
-read-chunks   IMAGE
-inject-exif   -i IMAGE -o OUT [--comment C] [--author A] [--custom-fields JSON]
-inject-name   [--template T] [--channels C] [--count N]
-templates
-analysis-tool IMAGE ACTION
+encode-cmd       -i IMAGE [-t TEXT|-f FILE] [-o OUT] [--channels C] [--bits N] [--password P]
+decode-cmd       -i IMAGE [-o OUT] [--no-auto] [--channels C] [--bits N] [--password P]
+analyze          IMAGE [--full] [--recursive]
+detect           IMAGE
+capacity         IMAGE [--channels C] [--bits N]
+chunks           IMAGE
+inject chunk     -i IMAGE -o OUT --text TEXT [--type tEXt] [--keyword Comment]
+inject exif      -i IMAGE -o OUT [--comment C] [--author A] [--custom-fields JSON]
+inject filename  [--template T] [--channels C] [--count N]
+inject templates
+analysis-tool    IMAGE ACTION
 list-tools
-crypto-status
+info-cmd
 ```
 
 ## Quick Reference
@@ -33,59 +33,56 @@ crypto-status
 
 ```bash
 # Hide text
-python3 stegg_cli.py encode -i carrier.png -t "secret message" -o stegged.png
+stegg --json encode-cmd -i carrier.png -t "secret message" -o stegged.png
 # Always verify roundtrip after encoding
-python3 stegg_cli.py decode -i stegged.png
+stegg --json decode-cmd -i stegged.png
 
 # Hide file with encryption
-python3 stegg_cli.py encode -i carrier.png -f payload.bin -o stegged.png --password s3cret
-python3 stegg_cli.py decode -i stegged.png --password s3cret
+stegg --json encode-cmd -i carrier.png -f payload.bin -o stegged.png --password s3cret
+stegg --json decode-cmd -i stegged.png --password s3cret
 
 # Decode with manual config (non-interleaved strategies)
-python3 stegg_cli.py decode -i stegged.png --no-auto --strategy sequential
+stegg --json decode-cmd -i stegged.png --no-auto --strategy sequential
 ```
 
 ### Analyze + Detect
 
 ```bash
 # Quick header check
-python3 stegg_cli.py detect suspect.png
+stegg --json detect suspect.png
 
 # Chi-square anomaly analysis
-python3 stegg_cli.py analyze suspect.png
-
-# Full 264-function sweep (PNG only)
-python3 stegg_cli.py analyze suspect.png --full
+stegg --json analyze suspect.png
 
 # Specific analysis function
-python3 stegg_cli.py analysis-tool suspect.png rs_analysis
-python3 stegg_cli.py analysis-tool suspect.png sample_pairs_analysis
+stegg --json analysis-tool suspect.png rs_analysis
+stegg --json analysis-tool suspect.png sample_pairs_analysis
 ```
 
 ### Metadata Injection
 
 ```bash
 # PNG chunk
-python3 stegg_cli.py inject-chunk -i image.png -o out.png --text "hidden metadata"
+stegg --json inject chunk -i image.png -o out.png --text "hidden metadata"
 
 # Private chunk type
-python3 stegg_cli.py inject-chunk -i image.png -o out.png --type stEg --text "private"
+stegg --json inject chunk -i image.png -o out.png --type stEg --text "private"
 
 # EXIF fields
-python3 stegg_cli.py inject-exif -i image.png -o out.png --comment "payload" --author "red-team"
+stegg --json inject exif -i image.png -o out.png --comment "payload" --author "red-team"
 
 # Read chunks
-python3 stegg_cli.py read-chunks image.png
+stegg --json chunks image.png
 ```
 
 ### AI Red Team
 
 ```bash
 # Generate injection filenames
-python3 stegg_cli.py inject-name --template claude_decoder --channels R --count 3
+stegg --json inject filename --template claude_decoder --channels R --count 3
 
 # List jailbreak templates
-python3 stegg_cli.py templates
+stegg --json inject templates
 ```
 
 ## Key Constraints
@@ -93,14 +90,13 @@ python3 stegg_cli.py templates
 - **Use `interleaved` strategy** (default) — only strategy with auto-detect on decode
 - `spread` and `randomized` have upstream decode bugs
 - `sequential` works but needs `--no-auto` on decode
-- All output is JSON; errors: `{"error": "..."}` with exit code 1
-- **Always check for `error` key** in JSON output before proceeding in multi-step operations
+- All `--json` output is JSON; errors print to stderr with exit code 1
 - **Always verify encode with decode** before distributing stegged images
 
 ## Installation
 
 ```bash
 pip install stegg
-# CLI is available as stegg-cli, or:
-python3 /path/to/st3gg/stegg_cli.py <command>
+# CLI is available as stegg, or:
+python3 cli.py --json <command>
 ```

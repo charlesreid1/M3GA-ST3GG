@@ -10,13 +10,13 @@ ST3GG is a steganography toolkit covering three carrier families as equal peers:
 
 Both wrap the same underlying library (`img_core`, `text_core`, `analysis_tools`, `transforms_core`, `crypto`). Pick one:
 
-### `stegg-cli` — subprocess CLI
-Skill: `skills/stegg-cli/SKILL.md`. Invoke as `python3 stegg_cli.py <command>` (or `stegg-cli` after install). JSON output. **Prefer this for routine encode/decode/analyze** — output stays out of LLM context.
+### `stegg --json` — subprocess CLI
+Skill: `skills/stegg-cli/SKILL.md`. Invoke as `stegg --json <command>`. JSON output. **Prefer this for routine encode/decode/analyze** — output stays out of LLM context.
 
 ### `stegg-mcp` — HTTP MCP server
 Skill: `skills/stegg-stego/SKILL.md`. Reference: `skills/stegg-stego/REFERENCE.md`. Package: `st3ggmcp/`. Streamable HTTP on `:8765/mcp`. **Use this when you want to reason over results inline**, chain tools with LLM judgment between steps, or need the `stegg://field-guide` resource loaded.
 
-Rule of thumb: CLI first for context hygiene, MCP for inline reasoning.
+Rule of thumb: `stegg --json` for context hygiene, MCP for inline reasoning.
 
 ## Field guide
 
@@ -31,7 +31,8 @@ Rule of thumb: CLI first for context hygiene, MCP for inline reasoning.
 - `analysis_tools.py` — 264+ detection/analysis functions
 - `transforms_core.py` — pure text transforms (zalgo, leetspeak, fullwidth) for pre-obfuscation
 - `crypto.py` — optional AES-256-GCM
-- `cli.py`, `stegg_cli.py` — main CLI + subprocess-friendly JSON CLI
+- `cli.py` — main CLI (Rich TUI by default; `--json` for machine-readable output)
+- `operations.py` — shared operation layer (file I/O + validation + core calls)
 - `webui.py` — optional NiceGUI UI
 - `st3ggmcp/` — HTTP MCP server package
   - `server.py` — ASGI app + entry point
