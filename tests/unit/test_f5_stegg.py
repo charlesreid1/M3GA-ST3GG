@@ -11,8 +11,6 @@ Node-interop test that runs when ``node`` is available.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -120,39 +118,5 @@ def test_extracts_pinned_js_embed(label, case):
     )
 
 
-# ---------- Optional Python → JS interop (needs node) ------------------
-
-NODE = shutil.which("node")
-
-
-@pytest.mark.skipif(NODE is None, reason="node not on PATH")
-def test_python_embed_js_extract(clean_jpeg_bytes, tmp_path, repo_root):
-    """Encode with F5Stegg → decode with the JS library in a subprocess."""
-    key = b"\x11\x22\x33\x44"
-    payload = b"Python -> JS interop!"
-
-    s = F5Stegg(key)
-    stego = s.embed(clean_jpeg_bytes, payload)
-
-    stego_path = tmp_path / "stego.jpg"
-    stego_path.write_bytes(stego)
-
-    # Minimal Node script — reads the stego file, runs f5get, prints hex.
-    script = f"""
-'use strict';
-const fs = require('fs');
-const path = require('path');
-const f5stego = require({str(repo_root / 'f5stego-lib.js')!r});
-const key = Uint8Array.from(Buffer.from({key.hex()!r}, 'hex'));
-const jpeg = fs.readFileSync({str(stego_path)!r});
-const codec = new f5stego(key);
-codec.parse(new Uint8Array(jpeg));
-const got = codec.f5get();
-process.stdout.write(Buffer.from(got).toString('hex'));
-"""
-    result = subprocess.run(
-        [NODE, "-e", script],
-        capture_output=True, text=True, timeout=30,
-    )
-    assert result.returncode == 0, f"node failed: {result.stderr}"
-    assert bytes.fromhex(result.stdout.strip()) == payload
+# Python → JS interop test retired with f5stego-lib.js (Phase 5).
+# Pinned fixture tests in this file cover JS→Python interop.

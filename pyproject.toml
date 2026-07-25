@@ -85,7 +85,7 @@ py-modules = ["img_core", "crypto", "analysis_tools", "text_core", "network_core
 packages = ["st3ggmcp", "f5_core"]
 
 [tool.setuptools.package-data]
-"*" = ["index.html", "f5stego-lib.js", "_headers", "wrangler.jsonc"]
+"*" = ["index.html", "_headers", "wrangler.jsonc"]
 "st3ggmcp" = ["field_guide.md"]
 
 [tool.pytest.ini_options]
