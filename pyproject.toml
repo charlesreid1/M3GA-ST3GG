@@ -87,7 +87,7 @@ Documentation = "https://github.com/elder-plinius/st3gg#readme"
 Issues = "https://github.com/elder-plinius/st3gg/issues"
 
 [tool.setuptools]
-py-modules = ["img_core", "crypto", "analysis_tools", "audio_core", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "capabilities", "metadata_core", "pdf_core", "operations"]
+py-modules = ["img_core", "crypto", "analysis_tools", "audio_core", "text_core", "network_core", "jailbreak_core", "unicode_tags", "specter", "cli", "webui", "app", "transforms_core", "ascii_art", "capabilities", "metadata_core", "pdf_core", "operations", "matryoshka_core"]
 packages = ["st3ggmcp", "f5_core"]
 
 [tool.setuptools.package-data]
