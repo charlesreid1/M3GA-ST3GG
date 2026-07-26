@@ -173,3 +173,13 @@ examples/pipelines/pipeline_covert_text.md
 # Local working notes from the F5 port — not part of the shipped repo.
 gotchas.md
 tests/transport/secrets_slack.json
+
+# Slack transport-harness per-run scratch (regenerated each run).
+# The `clean/` probe inputs are checked in; encoded/retrieved/evidence are not.
+transport_probes/slack/encoded/
+transport_probes/slack/retrieved/
+transport_probes/slack/evidence/
+transport_probes/slack/ui_kit/
+
+# Local scratch checkout used during dev; not part of the shipped repo.
+.numerics/

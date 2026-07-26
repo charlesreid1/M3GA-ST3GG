@@ -33,6 +33,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import f5_core.jsteg as jsteg
+import text_core
+
 # ---------------------------------------------------------------------------
 # paths
 # ---------------------------------------------------------------------------
@@ -67,12 +70,31 @@ def _rand_id(k: int = 6) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=k))
 
 
-def _make_payload(technique: str, timestamp: str) -> str:
-    """Deterministic-but-unique payload per cell."""
+def _make_payload(technique: str, timestamp: str, payload_bytes: int | None = None) -> str:
+    """Deterministic-but-unique payload per cell.
+
+    `payload_bytes` sets the total length in bytes (default 128). Cells
+    whose technique has small carrier capacity (whitespace, hangul, etc.)
+    override this via the matrix cell's `payload_bytes` field so the
+    probe actually fits — and cells whose method balloons on the wire
+    (emoji, skintone) must specify a small `payload_bytes` to stay under
+    Slack's ~4000-char message store cap.
+
+    If payload_bytes is smaller than the full descriptive inner template,
+    return a short marker `{PREFIX}|{rand}` truncated/padded to
+    payload_bytes. This preserves probe uniqueness at any size ≥ 12 bytes.
+    """
     rand = _rand_id(8)
     inner = f"{PAYLOAD_PREFIX}|{technique}|{timestamp}|{rand}"
-    # pad to min 128 bytes to exercise real stego paths
-    pad = "P" * max(0, 128 - len(inner))
+    if payload_bytes is not None and int(payload_bytes) < len(inner):
+        # Short mode: fit within payload_bytes using just prefix + rand.
+        short = f"{PAYLOAD_PREFIX[:3]}|{rand}"
+        target = int(payload_bytes)
+        if len(short) >= target:
+            return short[:target]
+        return short + ("P" * (target - len(short)))
+    target = 128 if payload_bytes is None else int(payload_bytes)
+    pad = "P" * max(0, target - len(inner))
     return inner + pad
 
 
@@ -98,11 +120,237 @@ def _run_stegg(*args: str, timeout: float = 30.0) -> subprocess.CompletedProcess
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=str(REPO_ROOT))
 
 
+class SteggCLIError(Exception):
+    """Raised when the stegg CLI reports an encode/decode failure.
+
+    stegg CLI prints errors to stdout prefixed with '✗' and exits nonzero.
+    Callers that swallow the exit code and treat stdout as data end up
+    uploading error strings as if they were stego output. Don't do that."""
+    def __init__(self, message: str, stdout: str = "", stderr: str = "", returncode: int = 0):
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+class ProbeConfigError(Exception):
+    """Raised when a matrix cell is self-inconsistent — e.g. its declared
+    payload can't fit in the (grown) cover for its technique. Propagates
+    past run_cell's blanket catch (same pattern as SteggCLIError) so the
+    whole run aborts and the operator fixes the cell before touching
+    Slack."""
+
+
+# ---------------------------------------------------------------------------
+# text-cover sizing
+# ---------------------------------------------------------------------------
+
+_COVER_SEEDS = {
+    # For cover-limited techniques, we grow a cover by repeating a
+    # technique-appropriate seed until capacity fits. Deterministic:
+    # same (method, payload_bytes) -> same cover across runs.
+    "whitespace": "The quick brown fox jumps over the lazy dog.\n",
+    "hangul":     "The quick brown fox jumps over the lazy dog. ",  # ASCII spaces are the carriers
+    "confusable": "The quick brown fox jumps over the lazy dog. ",  # ASCII spaces again
+    "capitalization": "The quick brown fox jumps over the lazy dog. ",  # word-initial letters
+    "variation":  "the quick brown fox jumps over the lazy dog ",  # ASCII alnum
+    "combining":  "the quick brown fox jumps over the lazy dog ",  # ASCII alpha
+    "mathbold":   "the quick brown fox jumps over the lazy dog ",  # ASCII letters
+    "cyrillic_homoglyph": "acex oxpy AB CE HK MO PT X. ",  # rich in Latin twin letters
+    "cjk_homoglyph": "one, two. three; four: five! six? (seven) eight. ",  # ASCII punctuation
+    # unbounded methods don't need growth — a short cover suffices
+}
+
+_DEFAULT_COVER = "The quick brown fox jumps over the lazy dog. " * 3
+
+
+def _grow_cover_for_capacity(method: str, payload_bytes: int, seed_cover: str | None = None) -> str:
+    """Return a cover long enough that `text_core.capacity(cover, method)`
+    reports `payload_bytes_max >= payload_bytes`.
+
+    Uses a technique-appropriate seed string (or the caller's override)
+    and repeats it until capacity fits, with a safety cap. Deterministic —
+    no RNG involved, so re-runs of the same cell produce the same cover."""
+    seed = seed_cover if seed_cover is not None else _COVER_SEEDS.get(method, _DEFAULT_COVER)
+    if not seed:
+        raise ProbeConfigError(f"{method}: empty cover seed")
+    # Probe capacity of the seed once to estimate repetitions.
+    try:
+        cap = text_core.capacity(seed, method)
+    except Exception as e:
+        raise ProbeConfigError(f"{method}: capacity() rejected seed: {e}") from e
+    cb = cap.get("carrier_bits")
+    if cb is None:
+        # Unbounded technique — any non-empty cover works.
+        return seed
+    needed_bits = payload_bytes * 8 + 16  # 16-bit length prefix used by every cover-limited method
+    if cb <= 0:
+        # Seed contributes zero bits — retrying won't help.
+        raise ProbeConfigError(
+            f"{method}: seed contributes 0 carrier bits; supply a cover with the right carrier characters"
+        )
+    reps = max(1, (needed_bits + cb - 1) // cb + 1)  # +1 for safety margin
+    cover = seed * reps
+    # Verify. Cap at 100x the estimated reps to catch pathological cases.
+    for _ in range(3):
+        cap = text_core.capacity(cover, method)
+        if cap.get("payload_bytes_max", 0) >= payload_bytes:
+            return cover
+        cover = cover * 2
+    raise ProbeConfigError(
+        f"{method}: could not grow cover to fit {payload_bytes} bytes "
+        f"(final capacity: {cap.get('payload_bytes_max')})"
+    )
+
+
+def _resolve_text_cover_and_payload(cell: dict, technique: str, timestamp: str) -> tuple[str, str]:
+    """Return (cover, payload) for a text-stego cell, honoring per-cell
+    payload_bytes/cover_text/cover_seed, and running the capacity gate.
+
+    Raises ProbeConfigError if the resolved cover can't fit the payload."""
+    cfg = cell.get("encode_config", {})
+    method = cfg["method"]
+    payload_bytes = cfg.get("payload_bytes")
+    payload = _make_payload(technique, timestamp, payload_bytes=payload_bytes)
+    actual_bytes = len(payload.encode("utf-8"))
+
+    cover_text = cfg.get("cover_text")
+    cover_seed = cfg.get("cover_seed")
+    if cover_text is not None:
+        cover = cover_text
+    else:
+        cover = _grow_cover_for_capacity(method, actual_bytes, seed_cover=cover_seed)
+
+    # Capacity gate — refuse locally, don't send garbage to Slack.
+    try:
+        cap = text_core.capacity(cover, method)
+    except Exception as e:
+        raise ProbeConfigError(f"{method}: capacity() failed: {e}") from e
+    cb = cap.get("carrier_bits")
+    max_bytes = cap.get("payload_bytes_max")
+    if cb is not None and max_bytes is not None and actual_bytes > max_bytes:
+        raise ProbeConfigError(
+            f"cell {cell.get('id')}: {method} cover holds {max_bytes} B, "
+            f"cell needs {actual_bytes} B (add cover_text/cover_seed or shrink payload_bytes)"
+        )
+    return cover, payload
+
+
 def _run_stegg_text(*args: str, timeout: float = 15.0) -> str:
-    """Run stegg and return stdout stripped. Doesn't use --json (text output)."""
+    """Run stegg and return stdout stripped. Raises SteggCLIError on failure.
+
+    Failure = nonzero exit code, or stdout starting with the '✗' sentinel
+    that stegg CLI uses for user-facing errors. Text output (no --json)."""
     cmd = [sys.executable, str(REPO_ROOT / "cli.py"), "--quiet", *args]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=str(REPO_ROOT))
-    return r.stdout.strip()
+    out = r.stdout.strip()
+    if r.returncode != 0 or out.startswith("✗"):
+        raise SteggCLIError(
+            f"stegg CLI failed (rc={r.returncode}): {out[:200] or r.stderr[:200]}",
+            stdout=out, stderr=r.stderr, returncode=r.returncode,
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# metadata / chunk verifiers
+# ---------------------------------------------------------------------------
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _read_png_metadata(path: Path | str) -> dict:
+    """Read a PNG's tEXt/zTXt/iTXt fields (via PIL image.info).
+
+    Returns {"info": {key: value, ...}} on success or {"error": "..."}
+    if the file isn't a readable PNG. This is what the exif-handler's
+    verification step consumes — never infer STRIPPED from a hash mismatch
+    alone; open the file and check the key's actual presence."""
+    p = Path(path)
+    if not p.exists() or p.stat().st_size == 0:
+        return {"error": "file missing or empty"}
+    try:
+        head = p.read_bytes()[:8]
+        if head != _PNG_MAGIC:
+            return {"error": f"not a PNG (magic={head.hex()})"}
+        from PIL import Image
+        with Image.open(p) as img:
+            img.load()
+            # Coerce non-string values (rare — e.g. gamma) into repr for JSON.
+            return {"info": {k: (v if isinstance(v, (str, int, float, bool)) else repr(v))
+                             for k, v in img.info.items()}}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _classify_metadata_result(
+    pre_fp: dict, post_fp: dict, pre_meta: dict, post_meta: dict,
+    target_key: str | None, payload: str,
+) -> str:
+    """Verdict for the PNG-tEXt (image_exif) handler.
+
+    Decision is based on the retrieved file's *actual* metadata slot for
+    target_key, not on hash comparison. Hash equality is used only to
+    distinguish "field survived, bytes intact" from "field survived, other
+    bytes changed" (DEGRADED)."""
+    if not post_fp["exists"]:
+        return "API_ERROR"
+    if "error" in post_meta:
+        return "CARRIER_DESTROYED"
+    if target_key is None:
+        # Custom-field probe with no single target — fall back to hash.
+        return "SURVIVES" if pre_fp["sha256"] == post_fp["sha256"] else "STRIPPED"
+
+    post_info = post_meta.get("info", {})
+    field_present = target_key in post_info and post_info[target_key] == payload
+    hashes_match = pre_fp["sha256"] == post_fp["sha256"]
+
+    if field_present and hashes_match:
+        return "SURVIVES"
+    if field_present and not hashes_match:
+        return "DEGRADED"
+    # Field is gone. Whether the surrounding carrier was also re-encoded
+    # is a separate question — signal that with RECODED if the size shift
+    # is large relative to just removing the tEXt chunk.
+    if pre_fp["size"] > 0 and abs(post_fp["size"] - pre_fp["size"]) > pre_fp["size"] * 0.2:
+        return "RECODED"
+    return "STRIPPED"
+
+
+_STANDARD_PNG_CHUNKS = {"IHDR", "IDAT", "IEND", "PLTE", "tRNS", "gAMA",
+                        "cHRM", "sRGB", "iCCP", "bKGD", "pHYs", "sBIT",
+                        "sPLT", "hIST", "tIME"}
+
+
+def _classify_chunk_result(
+    pre_fp: dict, post_fp: dict, chunks_post: dict,
+    target_chunk_type: str,
+) -> str:
+    """Verdict for the image_chunk handler.
+
+    Uses `stegg chunks` output on the retrieved PNG to distinguish a real
+    STRIPPED (target chunk absent, carrier intact) from CARRIER_DESTROYED
+    (unreadable) and DEGRADED (chunk survived but other bytes changed)."""
+    if not post_fp["exists"]:
+        return "API_ERROR"
+    if "error" in chunks_post:
+        return "CARRIER_DESTROYED"
+
+    retrieved_types = {c.get("type") for c in chunks_post.get("chunks", [])}
+    if "IHDR" not in retrieved_types or "IEND" not in retrieved_types:
+        return "CARRIER_DESTROYED"
+
+    target_present = target_chunk_type in retrieved_types
+    hashes_match = pre_fp["sha256"] == post_fp["sha256"]
+
+    if target_present and hashes_match:
+        return "SURVIVES"
+    if target_present and not hashes_match:
+        return "DEGRADED"
+    # target absent
+    if pre_fp["size"] > 0 and abs(post_fp["size"] - pre_fp["size"]) > pre_fp["size"] * 0.2:
+        return "RECODED"
+    return "STRIPPED"
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +358,47 @@ def _run_stegg_text(*args: str, timeout: float = 15.0) -> str:
 # ---------------------------------------------------------------------------
 
 VERDICTS = [
-    "SURVIVES",           # byte-identical, payload intact
+    "SURVIVES",           # payload actually recoverable after transport
     "STRIPPED",           # metadata removed but carrier intact
     "RECODED",            # file re-encoded, carrier format changed
-    "DEGRADED",           # partial damage
+    "DEGRADED",           # bytes preserved but payload no longer decodes
+    "TRUNCATED",          # Slack cut the message/file mid-content (retrieved is a strict prefix, or notably shorter than sent)
     "CARRIER_DESTROYED",  # file unreadable / format corrupted
     "API_ERROR",          # Slack API rejected or failed
     "SKIPPED",            # test not run (dry run, missing dep, etc.)
 ]
+
+# Slack stores messages in `blocks` and renders them at ~4000 chars of
+# colon-form-expanded text. Anything past that ceiling is dropped from
+# BOTH `blocks` and the `text` preview. For non-emoji text the encoded
+# length ~= wire length so a plain-text cap around 3500 chars is safe;
+# for emoji/skintone the wire length balloons ~12–15x per emoji so those
+# cells must specify small payload_bytes in the matrix.
+SLACK_MSG_STORE_LIMIT_CHARS = 3500
+
+# Rough per-character wire-form cost for emoji-family methods. Used to
+# pre-check whether encoded text will exceed the storage ceiling. Length
+# of `:red_circle:` is 12; `:+1::skin-tone-3:` per glyph averages ~15.
+_EMOJI_WIRE_EXPANSION = {
+    "emoji":    12,   # :red_circle: / :large_blue_circle:
+    "skintone": 15,   # :+1::skin-tone-N:
+}
+
+
+def _estimate_wire_chars(encoded_text: str, method: str) -> int:
+    """Estimate the colon-form-expanded length Slack will store for this text.
+
+    For emoji-family methods, count non-ASCII runes and apply the
+    per-method expansion factor; ASCII passes through 1:1. For all other
+    methods (zero-width, whitespace, homoglyph, ...) the wire form is
+    the same length as the input, so return raw length.
+    """
+    factor = _EMOJI_WIRE_EXPANSION.get(method)
+    if not factor:
+        return len(encoded_text)
+    ascii_chars = sum(1 for c in encoded_text if ord(c) < 128)
+    wide_chars = len(encoded_text) - ascii_chars
+    return ascii_chars + wide_chars * factor
 
 def _classify(pre_fp: dict, post_fp: dict, technique: str, retrieved_path: Path | None = None) -> tuple[str, dict]:
     """Compare pre/post fingerprints and return (verdict, details_dict)."""
@@ -178,16 +459,18 @@ class SlackTransportHarness:
     # ------------------------------------------------------------------
 
     def run(self, cells: list[dict], wave_label: str = "") -> list[dict]:
-        """Run a list of cells. Returns results list."""
+        """Run a list of cells. Returns only the results produced by THIS call."""
         total = len(cells)
+        this_run: list[dict] = []
         for i, cell in enumerate(cells, 1):
             print(f"\n{'─'*60}")
             print(f"[{i}/{total}] {cell['id']}  ({cell.get('description', '')})")
             print(f"  transport={cell['transport']}  technique={cell['technique']}  expect={cell.get('expect','?')}")
             result = self.run_cell(cell)
             self.results.append(result)
+            this_run.append(result)
             self._print_verdict(result)
-        return self.results
+        return this_run
 
     def run_cell(self, cell: dict) -> dict:
         """Run a single cell and return its result dict."""
@@ -209,7 +492,19 @@ class SlackTransportHarness:
             if handler is None:
                 handler = self._handle_generic
             handler(cell, result)
+        except SteggCLIError:
+            # ST3GG-side probe construction failed. This is a bug in the
+            # probe config or the stegg library, not a transport verdict.
+            # Fail loud — the whole run aborts, operator fixes the probe
+            # spec before continuing. Do NOT paper over as API_ERROR.
+            raise
+        except ProbeConfigError:
+            # Matrix cell is self-inconsistent (payload doesn't fit its
+            # cover, unknown method, etc.). Same reasoning as SteggCLIError:
+            # not a transport verdict, so fail loud rather than launder.
+            raise
         except Exception as e:
+            # Genuine Slack-transport failure (HTTP error, ok:false, etc.)
             result["verdict"] = "API_ERROR"
             result["error"] = f"{type(e).__name__}: {e}"
 
@@ -375,23 +670,45 @@ class SlackTransportHarness:
             "size": meta.get("size", 0),
         }
 
-        # Check chunk presence on retrieved
+        # Check chunk presence on retrieved. `stegg chunks` returning
+        # nonzero or invalid JSON means the retrieved PNG isn't parseable;
+        # surface that as a structured error so the classifier can decide
+        # CARRIER_DESTROYED rather than inferring STRIPPED from a hash.
+        chunks_data: dict = {}
         try:
             r2 = _run_stegg("chunks", str(retrieved_path))
-            chunks_data = json.loads(r2.stdout) if r2.stdout else {}
-        except Exception:
-            chunks_data = {"error": str(r2.stderr)}
+            if r2.returncode != 0:
+                chunks_data = {"error": f"rc={r2.returncode}: {r2.stderr[:200]}"}
+            else:
+                try:
+                    chunks_data = json.loads(r2.stdout) if r2.stdout else {"error": "empty stdout"}
+                except json.JSONDecodeError as je:
+                    chunks_data = {"error": f"json decode: {je}"}
+        except subprocess.TimeoutExpired:
+            chunks_data = {"error": "stegg chunks timeout"}
+        except Exception as e:
+            chunks_data = {"error": f"{type(e).__name__}: {e}"}
         result["evidence"]["chunks_post"] = chunks_data
 
-        verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
-        # Override: if hashes differ, it's definitely STRIPPED
-        if verdict != "SURVIVES":
-            verdict = "STRIPPED"
+        details: dict[str, Any] = {"pre": pre_fp, "post": post_fp}
+        details["size_delta"] = post_fp["size"] - pre_fp["size"]
+        details["hashes_match"] = (pre_fp["sha256"] == post_fp["sha256"])
+        retrieved_types = sorted({c.get("type") for c in chunks_data.get("chunks", []) if c.get("type")})
+        details["retrieved_chunk_types"] = retrieved_types
+        details["target_chunk_type"] = chunk_type
+        details["target_chunk_present_post"] = chunk_type in retrieved_types
+
+        verdict = _classify_chunk_result(pre_fp, post_fp, chunks_data, chunk_type)
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
     def _handle_image_exif(self, cell: dict, result: dict) -> None:
-        """Wave 3: inject EXIF → upload → download → check metadata."""
+        """Wave 3: inject PNG-tEXt metadata → upload → download → verify.
+
+        The `inject exif` CLI writes PNG PngInfo, not JPEG EXIF — so this
+        handler tests PNG-tEXt stripping (see cell ids `png_pseudo_exif_*`).
+        Verification opens the retrieved PNG with PIL and inspects
+        image.info for the specific field the encode step wrote."""
         cfg = cell.get("encode_config", {})
         clean_path = CLEAN_DIR / cfg.get("clean_input", "probe_150x150.png")
         self._ensure_clean_png_present(clean_path)
@@ -413,6 +730,21 @@ class SlackTransportHarness:
         result["evidence"]["encode"] = {"stdout": r.stdout, "stderr": r.stderr}
         result["evidence"]["payload"] = payload
 
+        # PIL PngInfo capitalizes the tEXt keyword. Track the exact key
+        # written so verification checks the right slot.
+        target_key = field.capitalize() if not cfg.get("custom_fields") else None
+        result["evidence"]["target_key"] = target_key
+
+        # Sanity check: injected key must be present in the encoded file.
+        # If it isn't, the probe is broken and the STRIPPED/SURVIVES
+        # distinction downstream is meaningless.
+        pre_meta = _read_png_metadata(encoded_path)
+        result["evidence"]["metadata_pre"] = pre_meta
+        if target_key and (pre_meta.get("error") or target_key not in pre_meta.get("info", {})):
+            raise SteggCLIError(
+                f"probe bug: injected key {target_key!r} absent from encoded {encoded_path.name}"
+            )
+
         pre_fp = _file_fingerprint(encoded_path)
         result["evidence"]["pre"] = pre_fp
 
@@ -430,10 +762,29 @@ class SlackTransportHarness:
         post_fp = _file_fingerprint(retrieved_path)
         result["evidence"]["retrieved_path"] = str(retrieved_path)
         result["evidence"]["post"] = post_fp
+        result["evidence"]["slack_meta"] = {
+            "mimetype": meta.get("mimetype", ""),
+            "filetype": meta.get("filetype", ""),
+            "size": meta.get("size", 0),
+        }
 
-        verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
-        if verdict != "SURVIVES":
-            verdict = "STRIPPED"
+        post_meta = _read_png_metadata(retrieved_path)
+        result["evidence"]["metadata_post"] = post_meta
+
+        details: dict[str, Any] = {"pre": pre_fp, "post": post_fp}
+        details["size_delta"] = post_fp["size"] - pre_fp["size"]
+        details["hashes_match"] = (pre_fp["sha256"] == post_fp["sha256"])
+
+        verdict = _classify_metadata_result(
+            pre_fp, post_fp, pre_meta, post_meta, target_key, payload,
+        )
+        details["target_key"] = target_key
+        details["target_value_present_post"] = (
+            target_key is not None
+            and target_key in post_meta.get("info", {})
+            and post_meta["info"][target_key] == payload
+        )
+
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
@@ -545,10 +896,14 @@ class SlackTransportHarness:
             result["evidence"]["decode"] = {"ok": False, "error": str(e)}
 
         verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
+        # Decode is authoritative for F5: a byte-identical round-trip
+        # whose payload doesn't decode is DEGRADED, not SURVIVES — the
+        # carrier's still valid but the stego is gone.
+        details["payload_survives_decode"] = decode_ok
         if decode_ok:
-            details["payload_survives_decode"] = True
-            if verdict == "RECODED":
-                verdict = "DEGRADED"  # re-encoded but payload survives
+            verdict = "SURVIVES"
+        elif verdict == "SURVIVES":
+            verdict = "DEGRADED"
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
@@ -559,13 +914,19 @@ class SlackTransportHarness:
         clean_path = CLEAN_DIR / clean_name
         self._ensure_clean_jpg_present(clean_path)
 
-        import f5_core.jsteg as jsteg
         # JSteg limited capacity on small JPEG — use short payload
         payload = f"ST3GG|{cell['technique']}|{_rand_id(4)}".encode()
         encoded_path = ENCODED_DIR / f"{cell['id']}.jpg"
 
         jpeg_bytes = clean_path.read_bytes()
-        encoded_bytes = jsteg.jsteg_encode(jpeg_bytes, payload)
+        try:
+            encoded_bytes = jsteg.jsteg_encode(jpeg_bytes, payload)
+        except Exception as e:
+            # In-process encode failed — this is a probe-config or library
+            # bug, not a Slack transport failure. Raise the same exception
+            # type CLI-side failures use so run_cell re-raises past its
+            # blanket catch instead of laundering as API_ERROR.
+            raise SteggCLIError(f"jsteg_encode failed: {type(e).__name__}: {e}") from e
         encoded_path.write_bytes(encoded_bytes)
         result["evidence"]["payload"] = payload.decode()
         result["evidence"]["encode"] = {"method": "jsteg_encode", "output_bytes": len(encoded_bytes)}
@@ -597,10 +958,12 @@ class SlackTransportHarness:
             result["evidence"]["decode"] = {"ok": False, "error": str(e)}
 
         verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
+        # Decode is authoritative — same reasoning as F5 above.
+        details["payload_survives_decode"] = decode_ok
         if decode_ok:
-            details["payload_survives_decode"] = True
-            if verdict == "RECODED":
-                verdict = "DEGRADED"
+            verdict = "SURVIVES"
+        elif verdict == "SURVIVES":
+            verdict = "DEGRADED"
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
@@ -642,8 +1005,16 @@ class SlackTransportHarness:
 
         verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
         details["trailer_survives"] = trailer_survives
+        trailer_bytes = len(payload.encode())
+        size_delta = post_fp["size"] - pre_fp["size"]
         if verdict != "SURVIVES" and trailer_survives:
             verdict = "DEGRADED"
+        elif not trailer_survives and size_delta == -trailer_bytes:
+            # Trailer gone; carrier shrank by exactly the trailer length.
+            # That's Slack removing the appended bytes and passing the
+            # underlying carrier through untouched — textbook STRIPPED,
+            # not RECODED. (A JPEG re-encode would show |delta| >> trailer.)
+            verdict = "STRIPPED"
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
@@ -747,18 +1118,28 @@ class SlackTransportHarness:
         result["evidence"]["classification"] = details
 
     def _handle_text_stego(self, cell: dict, result: dict) -> None:
-        """Wave 2/3/5: text stego → post message → retrieve → verify."""
+        """Wave 2/3/5: text stego → post message → retrieve → verify.
+
+        Verdict semantics for text stego:
+          SURVIVES  = payload extracted successfully from retrieved text
+          DEGRADED  = bytes preserved but decoder can't recover the payload
+          RECODED   = bytes changed (Slack normalized something)
+        """
         cfg = cell.get("encode_config", {})
         method = cfg["method"]
 
-        # Generate cover text
-        cover = cfg.get("cover_text", "The quick brown fox jumps over the lazy dog. " * 3)
+        # Cover/payload resolution + capacity gate lives outside the
+        # handler so text_stego and text_snippet share the same policy.
+        # Raises ProbeConfigError before we touch Slack if the cell is
+        # mis-sized.
+        cover, payload = _resolve_text_cover_and_payload(cell, cell["technique"], self.timestamp)
         cover_path = CLEAN_DIR / f"cover_{cell['id']}.txt"
         cover_path.write_text(cover)
+        result["evidence"]["cover_len_chars"] = len(cover)
 
-        payload = _make_payload(cell["technique"], self.timestamp)
-
-        # Encode
+        # Encode. If this raises SteggCLIError, run_cell lets it propagate
+        # and the whole run aborts — encode failure is a probe-config bug,
+        # not a Slack transport verdict.
         encoded_text = _run_stegg_text(
             "text", "encode",
             "-m", method,
@@ -767,6 +1148,7 @@ class SlackTransportHarness:
         )
         result["evidence"]["payload"] = payload
         result["evidence"]["encoded_text"] = encoded_text
+        result["evidence"]["encoded_len_chars"] = len(encoded_text)
         pre_fp = {"sha256": _sha256(encoded_text.encode()), "size": len(encoded_text.encode()), "exists": True}
         result["evidence"]["pre"] = pre_fp
 
@@ -774,46 +1156,78 @@ class SlackTransportHarness:
             result["verdict"] = "SKIPPED"
             return
 
-        # Post to Slack
+        # Refuse to send text whose wire-form-expanded length will exceed
+        # Slack's ~4000-char message store ceiling. Cells whose method
+        # expands per-codepoint on the wire (emoji, skintone) must specify
+        # a small enough payload_bytes to keep the estimated wire length
+        # under SLACK_MSG_STORE_LIMIT_CHARS.
+        wire_len = _estimate_wire_chars(encoded_text, method)
+        result["evidence"]["estimated_wire_chars"] = wire_len
+        if wire_len > SLACK_MSG_STORE_LIMIT_CHARS:
+            raise ProbeConfigError(
+                f"cell {cell.get('id')}: encoded_text is {len(encoded_text)} chars "
+                f"but expands to ~{wire_len} chars on the wire (method={method}) "
+                f"— exceeds Slack's ~{SLACK_MSG_STORE_LIMIT_CHARS} char storage limit. "
+                f"Reduce payload_bytes for this cell."
+            )
+
+        # Round-trip through Slack
         msg = self.client.post_message(encoded_text)
         ts = msg["ts"]
         result["evidence"]["send_response"] = {"ts": ts}
 
-        # Retrieve
         retrieved_text = self.client.get_message_text(ts)
         result["evidence"]["retrieved_text"] = retrieved_text
         post_fp = {"sha256": _sha256(retrieved_text.encode()), "size": len(retrieved_text.encode()), "exists": True}
         result["evidence"]["post"] = post_fp
 
-        # Clean up message
         self.client.delete_message(ts)
 
-        # Verify
         retrieved_path = RETRIEVED_DIR / f"{cell['id']}.txt"
         retrieved_path.write_text(retrieved_text)
 
-        verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
+        details: dict[str, Any] = {"pre": pre_fp, "post": post_fp}
         details["text_match"] = (encoded_text == retrieved_text)
         details["len_delta"] = len(retrieved_text) - len(encoded_text)
 
-        # Try decode on retrieved text
-        decode_ok = False
+        # For text stego, "SURVIVES" means the payload actually decodes
+        # from the retrieved text — NOT that the bytes happen to match.
+        # A byte-identical round-trip whose payload no longer decodes is
+        # DEGRADED. A decode failure on the retrieved text is a transport
+        # verdict (Slack ate something meaningful), not a harness error,
+        # so we catch it here and don't re-raise.
         try:
             decoded = _run_stegg_text(
                 "text", "decode",
                 "-m", method,
-                "-c", str(retrieved_path),
+                "-i", str(retrieved_path),
             )
-            decode_ok = payload in decoded
-            details["payload_survives_decode"] = decode_ok
-            result["evidence"]["decode"] = {"ok": decode_ok, "output": decoded[:200]}
-        except Exception as e:
+            payload_survives = payload in decoded
+            details["payload_survives_decode"] = payload_survives
+            result["evidence"]["decode"] = {"ok": payload_survives, "output": decoded[:200]}
+        except SteggCLIError as e:
+            payload_survives = False
+            details["payload_survives_decode"] = False
             result["evidence"]["decode"] = {"ok": False, "error": str(e)}
 
-        if decode_ok:
-            details["payload_survives_decode"] = True
-            if verdict != "SURVIVES":
-                verdict = "DEGRADED"
+        # Truncation detection: if we retrieved a strict prefix of what we
+        # sent (or the retrieved is >= ~5% shorter and starts with the
+        # encoded prefix), Slack cut the message mid-content. That's a
+        # transport verdict distinct from RECODED (which implies canonicalization).
+        # Order matters: check TRUNCATED before falling through to RECODED.
+        is_prefix = encoded_text.startswith(retrieved_text) and len(retrieved_text) < len(encoded_text)
+        significantly_shorter = len(retrieved_text) < len(encoded_text) * 0.95
+        details["truncation_suspected"] = is_prefix or significantly_shorter
+
+        if payload_survives:
+            verdict = "SURVIVES"
+        elif details["text_match"]:
+            verdict = "DEGRADED"
+        elif is_prefix or significantly_shorter:
+            verdict = "TRUNCATED"
+        else:
+            verdict = "RECODED"
+
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
 
@@ -872,16 +1286,23 @@ class SlackTransportHarness:
         result["evidence"]["classification"] = details
 
     def _handle_text_snippet(self, cell: dict, result: dict) -> None:
-        """Wave 5: text stego → upload as snippet → download → verify."""
+        """Wave 5: text stego → upload as snippet → download → verify.
+
+        Same verdict semantics as _handle_text_stego — SURVIVES requires
+        the payload to actually decode from the retrieved snippet bytes."""
         cfg = cell.get("encode_config", {})
         method = cfg["method"]
 
-        cover = cfg.get("cover_text", "The quick brown fox jumps over the lazy dog. " * 3)
+        # Cover/payload resolution + capacity gate lives outside the
+        # handler so text_stego and text_snippet share the same policy.
+        # Raises ProbeConfigError before we touch Slack if the cell is
+        # mis-sized.
+        cover, payload = _resolve_text_cover_and_payload(cell, cell["technique"], self.timestamp)
         cover_path = CLEAN_DIR / f"cover_{cell['id']}.txt"
         cover_path.write_text(cover)
+        result["evidence"]["cover_len_chars"] = len(cover)
 
-        payload = _make_payload(cell["technique"], self.timestamp)
-
+        # If encode fails, run_cell lets SteggCLIError propagate — fail loud.
         encoded_text = _run_stegg_text(
             "text", "encode",
             "-m", method,
@@ -910,19 +1331,44 @@ class SlackTransportHarness:
         post_fp = _file_fingerprint(retrieved_path)
         result["evidence"]["post"] = post_fp
 
-        verdict, details = _classify(pre_fp, post_fp, cell["technique"], retrieved_path)
-        details["text_match"] = (encoded_text.encode() == raw_bytes)
+        # Empty retrieval on a non-empty upload is a hard API failure, not
+        # a classification. Bail before running the decoder on zero bytes.
+        if pre_fp["size"] > 0 and post_fp["size"] == 0:
+            result["verdict"] = "API_ERROR"
+            result["evidence"]["classification"] = {
+                "pre": pre_fp, "post": post_fp,
+                "error": "snippet download returned 0 bytes for non-empty upload",
+                "file_id": file_id,
+                "file_meta": {k: meta.get(k) for k in ("id", "size", "url_private_download", "mimetype", "filetype") if k in meta},
+            }
+            return
 
-        # Try decode
+        details: dict[str, Any] = {"pre": pre_fp, "post": post_fp}
+        details["text_match"] = (encoded_text.encode() == raw_bytes)
+        details["size_delta"] = post_fp["size"] - pre_fp["size"]
+
+        # SURVIVES requires payload_survives_decode. Decode failure on
+        # retrieved content is a transport verdict, not a probe bug.
         try:
             decoded = _run_stegg_text(
                 "text", "decode",
                 "-m", method,
-                "-c", str(retrieved_path),
+                "-i", str(retrieved_path),
             )
-            details["payload_survives_decode"] = payload in decoded
-        except Exception:
+            payload_survives = payload in decoded
+            details["payload_survives_decode"] = payload_survives
+            result["evidence"]["decode"] = {"ok": payload_survives, "output": decoded[:200]}
+        except SteggCLIError as e:
+            payload_survives = False
             details["payload_survives_decode"] = False
+            result["evidence"]["decode"] = {"ok": False, "error": str(e)}
+
+        if payload_survives:
+            verdict = "SURVIVES"
+        elif details["text_match"]:
+            verdict = "DEGRADED"
+        else:
+            verdict = "RECODED"
 
         result["verdict"] = verdict
         result["evidence"]["classification"] = details
@@ -1228,9 +1674,14 @@ def main():
     }
 
     results_path = Path(args.results)
-    results_path.write_text(json.dumps(results_doc, indent=2, default=str))
     print(f"\n{'='*60}")
-    print(f"RESULTS WRITTEN: {results_path}")
+    if args.dry_run:
+        # Dry-runs produce only SKIPPED verdicts — writing them would
+        # clobber real prior results with meaningless data.
+        print(f"DRY-RUN: skipping write to {results_path}")
+    else:
+        results_path.write_text(json.dumps(results_doc, indent=2, default=str))
+        print(f"RESULTS WRITTEN: {results_path}")
 
     # Summary
     vc = _count_verdicts(all_results)

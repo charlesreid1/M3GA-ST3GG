@@ -16,6 +16,81 @@ from pathlib import Path
 SLACK_DOMAINS = {"slack.com", "files.slack.com", "slack-files.com",
                  "slack-edge.com", "slack-imgs.com", "slack-core.com"}
 
+
+def _reconstruct_text_from_blocks(blocks: list) -> str:
+    """Walk a Slack `blocks` payload (rich_text tree) and reproduce the
+    original message text — including raw unicode emoji, links, mentions,
+    and formatting characters — so we can classify what actually round-tripped.
+
+    Unlike the `text` preview field this preserves emoji as their unicode
+    codepoints (from the `unicode` field on emoji nodes) rather than
+    `:colon_form:`, and is not truncated at 4000 chars.
+    """
+    out: list[str] = []
+
+    def walk_leaf(el: dict) -> None:
+        t = el.get("type")
+        if t == "text":
+            out.append(el.get("text", ""))
+        elif t == "emoji":
+            uni = el.get("unicode")
+            if uni:
+                try:
+                    for cp in uni.split("-"):
+                        out.append(chr(int(cp, 16)))
+                    return
+                except ValueError:
+                    pass
+            name = el.get("name", "")
+            out.append(f":{name}:" if name else "")
+        elif t == "link":
+            # rich_text link nodes carry the URL in `url` and optional display in `text`
+            out.append(el.get("text") or el.get("url", ""))
+        elif t == "user":
+            out.append(f"<@{el.get('user_id','')}>")
+        elif t == "channel":
+            out.append(f"<#{el.get('channel_id','')}>")
+        elif t == "usergroup":
+            out.append(f"<!subteam^{el.get('usergroup_id','')}>")
+        elif t == "broadcast":
+            out.append(f"<!{el.get('range','')}>")
+        elif t == "date":
+            out.append(el.get("fallback") or "")
+        elif t == "color":
+            out.append(el.get("value", ""))
+        else:
+            # Unknown leaf: preserve any text-ish field so we don't silently drop content.
+            for k in ("text", "fallback", "url", "name"):
+                if k in el:
+                    out.append(str(el[k]))
+                    break
+
+    def walk_section(sec: dict) -> None:
+        for el in sec.get("elements", []):
+            walk_leaf(el)
+
+    for block in blocks:
+        if block.get("type") != "rich_text":
+            continue
+        for section in block.get("elements", []):
+            stype = section.get("type")
+            if stype == "rich_text_section":
+                walk_section(section)
+            elif stype == "rich_text_preformatted":
+                walk_section(section)
+                if not (out and out[-1].endswith("\n")):
+                    out.append("\n")
+            elif stype == "rich_text_quote":
+                walk_section(section)
+                if not (out and out[-1].endswith("\n")):
+                    out.append("\n")
+            elif stype == "rich_text_list":
+                for item in section.get("elements", []):
+                    walk_section(item)
+                    if not (out and out[-1].endswith("\n")):
+                        out.append("\n")
+    return "".join(out)
+
 class SlackAPIError(Exception):
     """Raised when the Slack API returns ok:false or an HTTP error."""
 
@@ -205,7 +280,26 @@ class SlackTransportClient:
         return {"channel": result["channel"], "ts": result["ts"]}
 
     def get_message_text(self, ts: str) -> str:
-        """Retrieve a message by timestamp. Returns the text field."""
+        """Retrieve a message by timestamp, reconstructed from `blocks`.
+
+        The message `text` field returned by conversations.history is a
+        colon-form-rendered preview capped at 4000 chars, so it silently
+        truncates and mis-represents anything using emoji, formatting,
+        mentions, or long content. The faithful canonical form is
+        `blocks[*].elements[*]` — a `rich_text` tree we walk to reproduce
+        the on-the-wire content the receiver actually sees.
+        """
+        msg = self.get_message(ts)
+        if "blocks" in msg and msg["blocks"]:
+            reconstructed = _reconstruct_text_from_blocks(msg["blocks"])
+            if reconstructed:
+                return reconstructed
+        # Fall back to text field only if no blocks (rare: legacy or
+        # bot-posted plain messages without rich_text).
+        return msg.get("text", "")
+
+    def get_message(self, ts: str) -> dict:
+        """Retrieve the full message dict by timestamp."""
         self._rate_limit()
         r = self.session.get(
             f"{self.base}/conversations.history",
@@ -214,6 +308,7 @@ class SlackTransportClient:
                 "latest": ts,
                 "limit": 1,
                 "inclusive": True,
+                "include_all_metadata": "true",
             },
         )
         result = r.json()
@@ -222,7 +317,7 @@ class SlackTransportClient:
         msgs = result.get("messages", [])
         if not msgs:
             raise SlackAPIError(f"Message at ts={ts} not found in channel {self.channel}")
-        return msgs[0].get("text", "")
+        return msgs[0]
 
     def delete_message(self, ts: str) -> None:
         """Delete a message. Best-effort — does not raise on failure."""
