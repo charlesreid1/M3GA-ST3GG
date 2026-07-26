@@ -19,7 +19,6 @@
 
 👉 **Hosted site: [ste.gg](https://ste.gg)**
 
-[![PyPI](https://img.shields.io/pypi/v/stegg?color=green&label=pip%20install%20stegg)](https://pypi.org/project/stegg/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_3.0-purple.svg)](https://github.com/elder-plinius/st3gg/blob/main/LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://python.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
@@ -236,7 +235,7 @@ ST3GG doesn't just hide data in images. It covers **every modality**:
 ### Image Techniques
 LSB embedding (RGB, RGBA, grayscale) across PNG, BMP, TIFF, GIF, WebP, ICO, PPM, PGM — plus alpha channel LSB, PNG filter-type encoding, palette index manipulation, DCT frequency domain, PNG+ZIP polyglots, metadata injection (EXIF, XMP, tEXt chunks), and trailing data after IEND.
 
-> **F5 (JPEG DCT)** — hides data in the least significant bits of quantized DCT coefficients of a JPEG's luminance channel. Uses matrix encoding (Westfeld 2001) with permuted coefficient order and shrinkage handling. Requires `pip install stegg[jpeg]`.
+> **F5 (JPEG DCT)** — hides data in the least significant bits of quantized DCT coefficients of a JPEG's luminance channel. Uses matrix encoding (Westfeld 2001) with permuted coefficient order and shrinkage handling. Requires the `jpeg` extra (`pip install -e '.[jpeg]'` in this fork; see [INSTALL.md](INSTALL.md)).
 >
 > ```bash
 > stegg dct f5 encode -i in.jpg -t "secret" -p password -o out.jpg
@@ -265,13 +264,24 @@ Python, JavaScript, C, CSS, Shell, SQL, LaTeX — all with steganographic commen
 
 ## ⊰ Quick Start ⊱
 
-### Install from PyPI
+> **This repo is [`charlesreid1/M3GA-ST3GG`](https://github.com/charlesreid1/M3GA-ST3GG),
+> a fork of upstream [`elder-plinius/st3gg`](https://github.com/elder-plinius/st3gg).
+> It is not published to PyPI** — `pip install stegg` pulls the upstream
+> package, not this fork. Install this fork from source (below). For the full
+> install guide including extras, requirements, and upstream instructions, see
+> [INSTALL.md](INSTALL.md).
+
+### Install from source (this fork)
 
 ```bash
-pip install stegg
+git clone git@github.com:charlesreid1/M3GA-ST3GG.git
+cd M3GA-ST3GG
+python3 -m venv venv
+source venv/bin/activate
+pip install -e '.[all]'       # or '.[mcp]' / bare '-e .' for core only
 ```
 
-That's it. Now you have `stegg` in your terminal:
+Now you have `stegg` in your terminal:
 
 ```bash
 # Encode a secret message
@@ -287,15 +297,6 @@ stegg analyze suspicious.png --full
 stegg encode image.png "{SPECTER:ENABLED}" -o stego.png
 ```
 
-### Install with extras
-
-```bash
-pip install stegg[web]      # Web UI (NiceGUI)
-pip install stegg[crypto]   # AES-256-GCM encryption
-pip install stegg[mcp]      # MCP server for AI agents
-pip install stegg[all]      # Everything
-```
-
 ### Browser (No Install)
 
 ```bash
@@ -305,12 +306,15 @@ open index.html
 
 Everything runs 100% client-side. No data ever leaves your machine.
 
-### From Source
+### Upstream via PyPI (separate project)
+
+The upstream project `elder-plinius/st3gg` is on PyPI as `stegg`. That is a
+different codebase from this fork — installing it does **not** install this
+repo's changes:
 
 ```bash
-git clone https://github.com/elder-plinius/st3gg.git
-cd st3gg
-pip install -e ".[all]"
+pip install stegg
+pip install 'stegg[all]'
 ```
 
 ### Interfaces
@@ -318,8 +322,8 @@ pip install -e ".[all]"
 ```bash
 stegg --help          # Interactive CLI (Rich output)
 stegg-cli --help      # Agent CLI (JSON output, subprocess-friendly)
-stegg-web             # Browser UI (requires: pip install stegg[web])
-stegg-mcp             # MCP server for AI agents (requires: pip install stegg[mcp])
+stegg-web             # Browser UI (requires the [web] extra — see INSTALL.md)
+stegg-mcp             # MCP server for AI agents (requires the [mcp] extra — see INSTALL.md)
 ```
 
 ### AI Agent Integration
@@ -453,7 +457,7 @@ ST3GG/
 ║  ✓ AES-256-GCM with PBKDF2 600k iterations                      ║
 ║  ✓ AI carrier image generation (OpenRouter + procedural)         ║
 ║  ✓ 109 example files, 568 automated tests                        ║
-║  ✓ pip install stegg                                              ║
+║  ✓ pip install stegg  (upstream only — this fork: from source)   ║
 ║  ✓ 100% browser-based at ste.gg                                  ║
 ║                                                                  ║
 ║  🔜 NEXT UP                                                      ║
