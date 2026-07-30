@@ -1,0 +1,99 @@
+{
+  "_meta": {
+    "description": "Slack transport survivability test matrix — cell definitions for test_slack.py",
+    "generated": "2026-07-25",
+    "total_cells": 104
+  },
+  "waves": {
+    "1": {
+      "label": "Baseline format preservation — no stego, just 'what does Slack do to files?'",
+      "cells": [
+        {"id": "fmt_png_rgb",         "transport": "slack_upload", "category": "format_probe", "technique": "clean_png_rgb",         "format": {"type": "png", "mode": "RGB", "ext": "png"},                   "description": "PNG (RGB) clean pass-through",      "expect": "SURVIVES"},
+        {"id": "fmt_png_rgba",        "transport": "slack_upload", "category": "format_probe", "technique": "clean_png_rgba",        "format": {"type": "png", "mode": "RGBA", "ext": "png"},                  "description": "PNG (RGBA) clean pass-through",     "expect": "SURVIVES"},
+        {"id": "fmt_png_gray",        "transport": "slack_upload", "category": "format_probe", "technique": "clean_png_gray",        "format": {"type": "png", "mode": "L", "ext": "png"},                      "description": "PNG (grayscale) clean pass-through", "expect": "SURVIVES"},
+        {"id": "fmt_png_indexed",     "transport": "slack_upload", "category": "format_probe", "technique": "clean_png_indexed",     "format": {"type": "png", "mode": "P", "ext": "png"},                      "description": "PNG (indexed/palette) pass-through", "expect": "SURVIVES"},
+        {"id": "fmt_jpeg_baseline",   "transport": "slack_upload", "category": "format_probe", "technique": "clean_jpeg_baseline",   "format": {"type": "jpeg", "quality": 85, "ext": "jpg"},                   "description": "JPEG (baseline Q=85) pass-through",  "expect": "UNKNOWN"},
+        {"id": "fmt_jpeg_prog",       "transport": "slack_upload", "category": "format_probe", "technique": "clean_jpeg_progressive", "format": {"type": "jpeg", "quality": 85, "ext": "jpg"},                  "description": "JPEG (progressive) pass-through",     "expect": "UNKNOWN"},
+        {"id": "fmt_gif",             "transport": "slack_upload", "category": "format_probe", "technique": "clean_gif",             "format": {"type": "gif", "ext": "gif"},                                    "description": "GIF clean pass-through",             "expect": "SURVIVES"},
+        {"id": "fmt_webp",            "transport": "slack_upload", "category": "format_probe", "technique": "clean_webp",            "format": {"type": "webp", "ext": "webp"},                                  "description": "WebP clean pass-through",            "expect": "UNKNOWN"},
+        {"id": "fmt_bmp",             "transport": "slack_upload", "category": "format_probe", "technique": "clean_bmp",             "format": {"type": "bmp", "ext": "bmp"},                                    "description": "BMP clean pass-through",             "expect": "SURVIVES"},
+        {"id": "fmt_tiff",            "transport": "slack_upload", "category": "format_probe", "technique": "clean_tiff",            "format": {"type": "tiff", "ext": "tiff"},                                  "description": "TIFF clean pass-through",            "expect": "UNKNOWN"},
+        {"id": "fmt_svg",             "transport": "slack_upload", "category": "format_probe", "technique": "clean_svg",             "format": {"type": "svg", "ext": "svg"},                                    "description": "SVG clean pass-through",             "expect": "UNKNOWN"},
+        {"id": "fmt_text_utf8",       "transport": "slack_upload", "category": "format_probe", "technique": "clean_text_utf8",       "format": {"type": "text", "ext": "txt"},                                   "description": "UTF-8 text file pass-through",       "expect": "SURVIVES"},
+        {"id": "fmt_text_utf8_bom",   "transport": "slack_upload", "category": "format_probe", "technique": "clean_text_utf8_bom",   "format": {"type": "text", "ext": "txt", "bom": true},                      "description": "UTF-8 with BOM pass-through",        "expect": "UNKNOWN"},
+        {"id": "fmt_text_crlf",       "transport": "slack_upload", "category": "format_probe", "technique": "clean_text_crlf",       "format": {"type": "text", "ext": "txt", "line_ending": "crlf"},         "description": "CRLF line endings pass-through",     "expect": "SURVIVES"},
+        {"id": "fmt_text_nullbytes",  "transport": "slack_upload", "category": "format_probe", "technique": "clean_text_nullbytes",  "format": {"type": "text", "ext": "txt", "null_bytes": true},              "description": "Null bytes in text pass-through",    "expect": "UNKNOWN"}
+      ]
+    },
+    "2": {
+      "label": "PNG LSB + basic text paste — happy-path techniques",
+      "cells": [
+        {"id": "slack_upload__lsb_1bit_R_seq",       "transport": "slack_upload", "category": "image_lsb",    "technique": "png_lsb_1bit_R_seq",         "encode_config": {"channels": "R",    "bits": 1, "strategy": "sequential"},  "description": "LSB 1-bit R sequential",             "expect": "SURVIVES"},
+        {"id": "slack_upload__lsb_1bit_RGB_inter",    "transport": "slack_upload", "category": "image_lsb",    "technique": "png_lsb_1bit_RGB_inter",     "encode_config": {"channels": "RGB",  "bits": 1, "strategy": "interleaved"},  "description": "LSB 1-bit RGB interleaved",           "expect": "SURVIVES"},
+        {"id": "slack_upload__lsb_2bit_B_spread",     "transport": "slack_upload", "category": "image_lsb",    "technique": "png_lsb_2bit_B_spread",      "encode_config": {"channels": "B",     "bits": 2, "strategy": "spread"},       "description": "LSB 2-bit B spread",                 "expect": "SURVIVES"},
+        {"id": "slack_upload__lsb_4bit_RGBA_rand",    "transport": "slack_upload", "category": "image_lsb",    "technique": "png_lsb_4bit_RGBA_rand",     "encode_config": {"channels": "RGBA", "bits": 4, "strategy": "randomized", "seed": 42}, "description": "LSB 4-bit RGBA randomized",       "expect": "SURVIVES"},
+        {"id": "slack_upload__lsb_8bit_RGB_seq",      "transport": "slack_upload", "category": "image_lsb",    "technique": "png_lsb_8bit_RGB_seq",       "encode_config": {"channels": "RGB",  "bits": 8, "strategy": "sequential"},  "description": "LSB 8-bit RGB sequential (max payload)", "expect": "SURVIVES"},
+        {"id": "slack_paste__text_zero_width",         "transport": "slack_paste",  "category": "text_stego",   "technique": "text_zero_width",            "encode_config": {"method": "zero_width"},                             "description": "Zero-width character stego via paste", "expect": "SURVIVES"},
+        {"id": "slack_paste__text_cyrillic_homoglyph", "transport": "slack_paste",  "category": "text_stego",   "technique": "text_cyrillic_homoglyph",    "encode_config": {"method": "cyrillic_homoglyph", "payload_bytes": 32},         "description": "Cyrillic homoglyph stego via paste (cover auto-grown to fit 32B payload)",  "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_whitespace",         "transport": "slack_paste",  "category": "text_stego",   "technique": "text_whitespace",            "encode_config": {"method": "whitespace",         "payload_bytes": 32},         "description": "Whitespace stego via paste (cover auto-grown to fit 32B payload)",          "expect": "UNKNOWN"}
+      ]
+    },
+    "3": {
+      "label": "Chunk/metadata stripping — STRIPPED baseline",
+      "cells": [
+        {"id": "slack_upload__chunk_tEXt",      "transport": "slack_upload", "category": "image_chunk", "technique": "chunk_tEXt",       "encode_config": {"chunk_type": "tEXt", "keyword": "Comment"},        "description": "PNG tEXt chunk",                        "expect": "STRIPPED"},
+        {"id": "slack_upload__chunk_zTXt",      "transport": "slack_upload", "category": "image_chunk", "technique": "chunk_zTXt",       "encode_config": {"chunk_type": "zTXt", "keyword": "Comment", "compressed": true}, "description": "PNG zTXt chunk (compressed)",  "expect": "STRIPPED"},
+        {"id": "slack_upload__chunk_iTXt",      "transport": "slack_upload", "category": "image_chunk", "technique": "chunk_iTXt",       "encode_config": {"chunk_type": "iTXt", "keyword": "Comment"},        "description": "PNG iTXt chunk (UTF-8)",               "expect": "STRIPPED"},
+        {"id": "slack_upload__chunk_private",   "transport": "slack_upload", "category": "image_chunk", "technique": "chunk_private",    "encode_config": {"chunk_type": "stEg", "keyword": "steg"},           "description": "PNG private chunk (stEg)",              "expect": "STRIPPED"},
+        {"id": "slack_upload__png_pseudo_exif_comment",    "transport": "slack_upload", "category": "image_exif",  "technique": "png_pseudo_exif_comment",     "encode_config": {"field": "comment", "clean_input": "probe_150x150.png"},        "description": "PNG-tEXt Comment via inject exif (PNG carrier, not real JPEG EXIF)",     "expect": "STRIPPED"},
+        {"id": "slack_upload__png_pseudo_exif_author",     "transport": "slack_upload", "category": "image_exif",  "technique": "png_pseudo_exif_author",      "encode_config": {"field": "author", "clean_input": "probe_150x150.png"},         "description": "PNG-tEXt Author via inject exif (PNG carrier, not real JPEG EXIF)",      "expect": "STRIPPED"},
+        {"id": "slack_upload__png_pseudo_exif_description","transport": "slack_upload", "category": "image_exif",  "technique": "png_pseudo_exif_description", "encode_config": {"field": "description", "clean_input": "probe_150x150.png"},    "description": "PNG-tEXt Description via inject exif (PNG carrier, not real JPEG EXIF)", "expect": "STRIPPED"},
+        {"id": "slack_upload__png_pseudo_exif_title",      "transport": "slack_upload", "category": "image_exif",  "technique": "png_pseudo_exif_title",       "encode_config": {"field": "title", "clean_input": "probe_150x150.png"},          "description": "PNG-tEXt Title via inject exif (PNG carrier, not real JPEG EXIF)",       "expect": "STRIPPED"}
+      ]
+    },
+    "4": {
+      "label": "JPEG DCT + trailing bytes — higher uncertainty",
+      "cells": [
+        {"id": "slack_upload__dct_medium",      "transport": "slack_upload", "category": "image_dct",      "technique": "jpeg_dct_medium",       "encode_config": {"robustness": "medium"},                                   "description": "DCT encode medium robustness",        "expect": "UNKNOWN"},
+        {"id": "slack_upload__dct_high",        "transport": "slack_upload", "category": "image_dct",      "technique": "jpeg_dct_high",         "encode_config": {"robustness": "high"},                                     "description": "DCT encode high robustness",           "expect": "UNKNOWN"},
+        {"id": "slack_upload__f5",              "transport": "slack_upload", "category": "image_f5",       "technique": "jpeg_f5",               "encode_config": {"password": "testpass"},                                    "description": "F5 JPEG DCT coefficient stego",       "expect": "UNKNOWN"},
+        {"id": "slack_upload__jsteg",           "transport": "slack_upload", "category": "image_jsteg",    "technique": "jpeg_jsteg",            "encode_config": {},                                                          "description": "JSteg sequential LSB of DCT coeffs",  "expect": "UNKNOWN"},
+        {"id": "slack_upload__png_trail",        "transport": "slack_upload", "category": "image_trailing", "technique": "png_trailing_bytes",     "encode_config": {"clean_input": "probe_150x150.png"},                       "description": "PNG trailing bytes past IEND",        "expect": "STRIPPED"},
+        {"id": "slack_upload__jpeg_trail",       "transport": "slack_upload", "category": "image_trailing", "technique": "jpeg_trailing_bytes",    "encode_config": {"clean_input": "probe_150x150.jpg"},                       "description": "JPEG trailing bytes past EOI",        "expect": "UNKNOWN"}
+      ]
+    },
+    "5": {
+      "label": "Remaining text methods, emoji, transforms, and snippets",
+      "cells": [
+        {"id": "slack_paste__text_cjk",               "transport": "slack_paste",  "category": "text_stego",     "technique": "text_cjk_homoglyph",         "encode_config": {"method": "cjk_homoglyph",  "payload_bytes": 32},         "description": "CJK homoglyph stego via paste (cover auto-grown)",               "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_invisible_ink",     "transport": "slack_paste",  "category": "text_stego",     "technique": "text_invisible_ink",         "encode_config": {"method": "invisible_ink"},                                    "description": "Unicode tag block invisible ink (unbounded capacity)",            "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_variation",         "transport": "slack_paste",  "category": "text_stego",     "technique": "text_variation_selector",    "encode_config": {"method": "variation",      "payload_bytes": 32},         "description": "Variation selector stego via paste (cover auto-grown)",           "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_combining",         "transport": "slack_paste",  "category": "text_stego",     "technique": "text_combining_cgj",         "encode_config": {"method": "combining",      "payload_bytes": 32},         "description": "Combining CGJ stego via paste (cover auto-grown)",               "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_confusable",        "transport": "slack_paste",  "category": "text_stego",     "technique": "text_confusable_whitespace", "encode_config": {"method": "confusable",     "payload_bytes": 32},         "description": "Confusable whitespace stego via paste (cover auto-grown)",        "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_directional",       "transport": "slack_paste",  "category": "text_stego",     "technique": "text_directional_override",  "encode_config": {"method": "directional"},                                      "description": "Directional override (RLO/LRO) via paste (unbounded capacity)",   "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_hangul",            "transport": "slack_paste",  "category": "text_stego",     "technique": "text_hangul_filler",         "encode_config": {"method": "hangul",         "payload_bytes": 32},         "description": "Hangul filler stego via paste (cover auto-grown)",               "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_mathbold",          "transport": "slack_paste",  "category": "text_stego",     "technique": "text_mathbold",              "encode_config": {"method": "mathbold",       "payload_bytes": 32},         "description": "Math bold stego via paste (cover auto-grown)",                   "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_braille",           "transport": "slack_paste",  "category": "text_stego",     "technique": "text_braille",               "encode_config": {"method": "braille"},                                          "description": "Braille stego via paste (unbounded capacity)",                    "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_emoji",             "transport": "slack_paste",  "category": "text_stego",     "technique": "text_emoji_substitution",    "encode_config": {"method": "emoji",    "payload_bytes": 12},                    "description": "Emoji substitution stego via paste (payload capped: colon-form expands ~12x per emoji vs Slack ~4000 char msg store)",         "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_skintone",          "transport": "slack_paste",  "category": "text_stego",     "technique": "text_skintone",              "encode_config": {"method": "skintone", "payload_bytes": 12},                    "description": "Skin-tone modifier stego via paste (payload capped: colon-form expands ~15x per glyph vs Slack ~4000 char msg store)",         "expect": "UNKNOWN"},
+        {"id": "slack_paste__text_capitalization",    "transport": "slack_paste",  "category": "text_stego",     "technique": "text_capitalization",        "encode_config": {"method": "capitalization", "payload_bytes": 32},         "description": "Capitalization stego via paste (cover auto-grown)",               "expect": "UNKNOWN"},
+        {"id": "slack_paste__transform_zalgo",        "transport": "slack_paste",  "category": "text_transform", "technique": "transform_zalgo",            "encode_config": {"transform": "zalgo", "intensity": 3},                 "description": "Zalgo transform survival via paste",         "expect": "SURVIVES"},
+        {"id": "slack_paste__transform_leet",         "transport": "slack_paste",  "category": "text_transform", "technique": "transform_leet",             "encode_config": {"transform": "leet", "intensity": 2},                  "description": "Leetspeak transform survival via paste",      "expect": "SURVIVES"},
+        {"id": "slack_snippet__text_zero_width",       "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_zero_width",         "encode_config": {"method": "zero_width"},                              "description": "Zero-width stego as Slack snippet",           "expect": "UNKNOWN"},
+        {"id": "slack_snippet__text_whitespace",       "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_whitespace",         "encode_config": {"method": "whitespace"},                               "description": "Whitespace stego as Slack snippet",           "expect": "UNKNOWN"},
+        {"id": "slack_snippet__text_invisible_ink",    "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_invisible_ink",      "encode_config": {"method": "invisible_ink"},                            "description": "Invisible ink stego as Slack snippet",        "expect": "UNKNOWN"},
+        {"id": "slack_snippet__text_cyrillic",         "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_cyrillic_homoglyph", "encode_config": {"method": "cyrillic_homoglyph", "payload_bytes": 32},        "description": "Cyrillic homoglyph stego as Slack snippet (cover auto-grown)",    "expect": "UNKNOWN"},
+        {"id": "slack_snippet__text_directional",      "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_directional",        "encode_config": {"method": "directional"},                              "description": "Directional override as Slack snippet",        "expect": "UNKNOWN"},
+        {"id": "slack_snippet__text_emoji",            "transport": "slack_snippet","category": "text_snippet",   "technique": "snippet_emoji",              "encode_config": {"method": "emoji", "payload_bytes": 12},               "description": "Emoji stego as Slack snippet (payload capped for wire-form blowup)",                "expect": "UNKNOWN"}
+      ]
+    },
+    "6": {
+      "label": "SPECTER, Matryoshka, and advanced image techniques",
+      "cells": [
+        {"id": "slack_upload__specter",         "transport": "slack_upload", "category": "image_specter",     "technique": "specter_channel_cipher",     "encode_config": {},                                              "description": "SPECTER channel-hopping cipher",           "expect": "UNKNOWN"},
+        {"id": "slack_upload__matryoshka",       "transport": "slack_upload", "category": "image_matryoshka",  "technique": "matryoshka_nested",          "encode_config": {},                                              "description": "Matryoshka nested-image stego",            "expect": "UNKNOWN"},
+        {"id": "slack_upload__lsb_1bit_RGBA_inter","transport": "slack_upload", "category": "image_lsb",       "technique": "png_lsb_1bit_RGBA_inter",    "encode_config": {"channels": "RGBA", "bits": 1, "strategy": "interleaved"},  "description": "LSB 1-bit RGBA interleaved (alpha channel)", "expect": "SURVIVES"}
+      ]
+    }
+  }
+}
