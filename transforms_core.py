@@ -28,6 +28,8 @@ only place that needs to change.
 
 from __future__ import annotations
 
+import base64
+import math
 import random
 from typing import Callable, Dict
 
@@ -126,6 +128,96 @@ def fullwidth_text(text: str) -> str:
     return ''.join(result)
 
 
+# ============== base64 ==============
+
+def base64_encode(text: str) -> str:
+    """Encode text as standard Base64 (RFC 4648), UTF-8 input, ASCII output.
+
+    Transport survivability: universal. Pure ASCII, survives every transport
+    including NFKC normalization. Round-trip via ``base64.b64decode``.
+    """
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
+# ============== base32 ==============
+
+def base32_encode(text: str) -> str:
+    """Encode text as standard Base32 (RFC 4648), UTF-8 input, ASCII output.
+
+    Uppercase A–Z and 2–7 alphabet. Larger than base64 (~1.6x) but case-
+    insensitive and safe for channels that mangle mixed case. Round-trip via
+    ``base64.b32decode``.
+    """
+    return base64.b32encode(text.encode("utf-8")).decode("ascii")
+
+
+# ============== base-N (2..16) ==============
+
+_BASE_N_DIGITS = "0123456789abcdef"
+
+
+def base_n_encode(text: str, base: int) -> str:
+    """Encode text as per-byte fixed-width digits in the given base (2..16).
+
+    Each UTF-8 byte of ``text`` becomes exactly ``ceil(8 / log2(base))``
+    digits from the lowercase alphabet ``0-9a-f`` (truncated to ``base``
+    digits). Fixed-width padding makes the output unambiguous to decode.
+
+    Examples (byte 0x66, 'f'):
+        base=2  -> '01100110'  (8 digits)
+        base=3  -> '022210'    (6 digits)
+        base=16 -> '66'        (2 digits)
+
+    Transport survivability: universal for base <= 10 (digits only). For
+    base 11..16 the output includes ``a..f``, still pure ASCII.
+    """
+    if not isinstance(base, int) or base < 2 or base > 16:
+        raise ValueError(f"base must be an integer in 2..16, got {base!r}")
+
+    width = math.ceil(8 / math.log2(base))
+    alphabet = _BASE_N_DIGITS[:base]
+    out = []
+    for byte in text.encode("utf-8"):
+        digits = []
+        n = byte
+        for _ in range(width):
+            digits.append(alphabet[n % base])
+            n //= base
+        out.append("".join(reversed(digits)))
+    return "".join(out)
+
+
+def binary_encode(text: str) -> str:
+    """Encode text as binary — 8 bits per UTF-8 byte."""
+    return base_n_encode(text, 2)
+
+
+def ternary_encode(text: str) -> str:
+    """Encode text as ternary — 6 base-3 digits per UTF-8 byte."""
+    return base_n_encode(text, 3)
+
+
+def hex_encode(text: str) -> str:
+    """Encode text as lowercase hex — 2 base-16 digits per UTF-8 byte.
+
+    Transport survivability: universal. Round-trip via ``bytes.fromhex`` then
+    UTF-8 decode.
+    """
+    return base_n_encode(text, 16)
+
+
+# ============== reverse ==============
+
+def reverse_text(text: str) -> str:
+    """Reverse the string by Unicode code points.
+
+    Note: combining marks are reversed too, so a base-glyph + combining-mark
+    pair becomes combining-mark + base-glyph and may render oddly. For pre-
+    obfuscation of ASCII payloads this is a non-issue.
+    """
+    return text[::-1]
+
+
 # ============== Registry ==============
 
 _TRANSFORMS: Dict[str, Callable[..., str]] = {}
@@ -165,3 +257,9 @@ def list_transforms() -> list:
 _register("zalgo", zalgo_text, reversible=True, category="format")
 _register("fullwidth", fullwidth_text, reversible=True, category="format")
 _register("leetspeak", leetspeak, reversible=True, category="format")
+_register("base64", base64_encode, reversible=True, category="encoding")
+_register("base32", base32_encode, reversible=True, category="encoding")
+_register("binary", binary_encode, reversible=True, category="encoding")
+_register("ternary", ternary_encode, reversible=True, category="encoding")
+_register("hex", hex_encode, reversible=True, category="encoding")
+_register("reverse", reverse_text, reversible=True, category="format")
