@@ -321,7 +321,7 @@ pip install 'stegg[all]'
 
 ```bash
 stegg --help          # Interactive CLI (Rich output)
-stegg-cli --help      # Agent CLI (JSON output, subprocess-friendly)
+stegg --json <cmd>    # Same CLI, JSON output — subprocess-friendly for agents
 stegg-web             # Browser UI (requires the [web] extra — see INSTALL.md)
 stegg-mcp             # MCP server for AI agents (requires the [mcp] extra — see INSTALL.md)
 ```
@@ -332,9 +332,9 @@ Two interfaces for AI agents — pick based on context cost needs:
 
 ```bash
 # CLI (subprocess, zero context cost — output stays out of LLM context)
-stegg-cli encode -i carrier.png -t "secret" -o stegged.png
-stegg-cli decode -i stegged.png
-stegg-cli analyze suspect.png --full
+stegg --json encode-cmd -i carrier.png -t "secret" -o stegged.png
+stegg --json decode-cmd -i stegged.png
+stegg --json analyze suspect.png --full
 
 # MCP server (Streamable HTTP by default, stdio also available — results go into agent context)
 stegg-mcp
