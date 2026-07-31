@@ -5,7 +5,9 @@ description: "Subprocess CLI for ST3GG steganography. Covers image LSB encode/de
 
 # ST3GG CLI
 
-Subprocess steganography CLI. Output stays out of LLM context — invoke as `stegg --json <command>`. All output is JSON on stdout; errors on stderr with exit code 1.
+Subprocess steganography CLI. Output stays out of LLM context — invoke as `stegg --json <command>`. Most subcommands emit JSON on stdout; errors on stderr with exit code 1.
+
+**Known gap** (tracked in `plan-06-follow-on.md` §1): a handful of subcommands (`text encode|decode|capacity`, `analyze`, `analysis-tool`, `inject filename|templates|detect`) still print leftover Rich/TUI output regardless of `--json`. If you need parseable output from those, work around it until the Rich calls get ripped out of `cli.py`. JSON-clean subcommands: `encode-cmd`, `decode-cmd`, `detect`, `capacity`, `chunks`, `inject chunk`, `inject exif`, `list-tools`.
 
 **When to use this vs. `stegg-stego` (MCP):** prefer this for routine encode/decode/analyze and for batch runs where output is verbose. Reach for the MCP server when you want the LLM to reason over results inline, chain tools with judgment between steps, or need the `stegg_triage` verdict + `stegg://field-guide` resource loaded.
 
@@ -135,7 +137,7 @@ stegg --json inject detect -i suspect.png --full
 
 - **Use `interleaved` strategy** (default) — only strategy with auto-detect on decode.
 - `sequential` works but needs `--no-auto` on decode.
-- All `--json` output is JSON on stdout; errors on stderr with exit code 1.
+- `--json` is honored by most (not all) subcommands — see the "Known gap" note at the top for the current holdouts. When honored, JSON goes to stdout, errors to stderr with exit code 1.
 - **Always verify encode with decode** before distributing stegged images.
 - No `stegg-cli` executable exists — the CLI is `stegg` with the `--json` flag.
 

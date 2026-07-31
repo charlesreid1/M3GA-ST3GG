@@ -5,7 +5,7 @@ description: "ST3GG steganography via HTTP MCP server. Covers image (LSB, DCT/F5
 
 # ST3GG stego (MCP)
 
-HTTP MCP server exposing ~36 steganography tools across six families — **triage**, **image** (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB), **text/emoji** (14 methods), **network** (PCAP), **jailbreak / transforms** (composers + detectors for authorized red-team use), and **meta / capabilities** — plus a persona field guide. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
+HTTP MCP server exposing 52 steganography tools across six families — **triage**, **image** (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB), **text/emoji** (14 methods), **network** (PCAP), **jailbreak / transforms** (composers + detectors for authorized red-team use), and **meta / capabilities** — plus a persona field guide. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
 
 ## Server
 
