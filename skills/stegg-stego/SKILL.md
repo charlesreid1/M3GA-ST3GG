@@ -1,11 +1,11 @@
 ---
 name: stegg-stego
-description: "ST3GG steganography via HTTP MCP server — image LSB encode/decode, PNG chunk/EXIF injection, statistical triage with SUSPICIOUS/INCONCLUSIVE/CLEAN verdicts, text and emoji carriers (zero-width, cyrillic_homoglyph, cjk_homoglyph, whitespace, variation, combining, confusable, directional, hangul, mathbold, braille, emoji, skintone, capitalization), and container carving (ZIP/GZip/TAR/PDF/SQLite/SVG/PCAP/JPEG/audio-LSB). Use when analyzing files for hidden content, hiding data in images or text, injecting metadata, or answering technique-tradeoff questions. Triggers on stegg, steganography, steg, LSB, hide data, hidden data, steganalysis, zero-width, homoglyph, cyrillic_homoglyph, cjk_homoglyph, PNG chunk, EXIF injection."
+description: "ST3GG steganography via HTTP MCP server. Covers image (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB, PNG chunk/EXIF injection, container carving), text and emoji (zero-width, cyrillic_homoglyph, cjk_homoglyph, whitespace, variation, combining, confusable, directional, hangul, mathbold, braille, emoji, skintone, capitalization, invisible_ink), network (PCAP steg + steganalysis), and authorized jailbreak / prompt-injection composers and detectors. Use when analyzing files for hidden content, hiding data in any of those carriers, running triage with SUSPICIOUS/INCONCLUSIVE/CLEAN verdicts, probing what a stegg build supports at runtime, or answering technique-tradeoff and transport-survival questions. Triggers on stegg, steganography, steg, LSB, DCT, F5, JSteg, PVD, hide data, hidden data, steganalysis, triage, zero-width, homoglyph, cyrillic_homoglyph, cjk_homoglyph, PNG chunk, EXIF injection, polyglot, PCAP steg, network steg, prompt injection, jailbreak, Unicode Tag, hidden emoji, capability probe."
 ---
 
 # ST3GG stego (MCP)
 
-HTTP MCP server exposing 15 steganography tools across three carrier families — **image**, **text**, **emoji** — plus a persona field guide. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
+HTTP MCP server exposing ~36 steganography tools across six families — **triage**, **image** (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB), **text/emoji** (14 methods), **network** (PCAP), **jailbreak / transforms** (composers + detectors for authorized red-team use), and **meta / capabilities** — plus a persona field guide. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
 
 ## Server
 
@@ -95,6 +95,22 @@ Start with `stegg-mcp` (after `pip install -e '.[mcp]'`). Container-to-container
 
 <!-- END autogen: tool index -->
 
+## When to reach for which family
+
+The autogen block above is the menu; this section is the decision guide. Reach for the tool whose failure mode you're worried about.
+
+**LSB (`stegg_encode_manual` / `stegg_decode_manual` / `stegg_lsb_smart_scan`)** — spatial-domain, highest capacity, easy to detect with statistical probes. Dies on any lossy re-encode (JPEG round-trip, chat-app recompression). Default choice for PNG carriers you control end-to-end.
+
+**DCT (`stegg_dct_encode` / `stegg_dct_decode` / `stegg_dct_capacity`) + F5 / JSteg** — frequency-domain, lower capacity, survives JPEG recompression which destroys LSB. Reach for this when the transport is a JPEG pipeline (uploads, chat apps, cameras) or when triage came up empty on a JPEG-round-tripped image — the payload may still be there in DCT coefficients. F5 (Westfeld 2001) uses matrix encoding for better statistical undetectability; JSteg is the classic simple LSB-of-nonzero-AC approach.
+
+**PVD (`stegg_pvd_encode` / `stegg_pvd_decode` / `stegg_detect_pvd` / `stegg_pvd_capacity`)** — Pixel Value Differencing: adaptive embedding that hides more bits in high-contrast pixel pairs and fewer in smooth regions. Distinct from LSB because it survives basic LSB steganalysis (chi-square, sample-pairs) that expects uniform LSB flipping. Use `stegg_detect_pvd` in triage sweeps of images where standard LSB probes came up CLEAN.
+
+**Network (`stegg_network_encode` / `stegg_network_decode` / `stegg_network_detect` / `stegg_network_methods`)** — PCAP is a first-class carrier here. Techniques include IP/TCP header fields (TTL, ID, sequence numbers), timing side-channels, and DNS label smuggling. Capacity is measured in bytes-per-packet, not bytes-per-file. Ask `stegg_network_methods` first for the current method list and per-method capacity; use `stegg_network_detect` for statistical steganalysis over a captured PCAP.
+
+**Jailbreak / transforms (`stegg_jailbreak_*` / `stegg_transforms_list`)** — composers and detectors for authorized red-team ops, CTFs, DEF CON challenges, hardware badges, detection-tuning, and forensic research (see `AGENTS.md` for the parent framing). Composers stitch obfuscation pipelines from `transforms_core` (zalgo, fullwidth, leetspeak) with text stego or image LSB to produce end-to-end prompt-injection payloads. The detection sweep (`stegg_jailbreak_detect`) is the blue-team side of the same catalog — scan filenames, PNG chunks, LSB pixels, trailing bytes, and Unicode obfuscation in one call.
+
+**Text / emoji** — 14 methods spanning invisible (zero-width, homoglyph, variation selectors, whitespace) and visibly-perturbed (braille, emoji, skintone). `stegg_text_steg` / `stegg_text_steg_message` run the full detector suite; `stegg_text_encode` / `stegg_text_decode` operate on a named method. See `stegg://field-guide` for per-method transport-survival tables.
+
 ## Resource
 
 - `stegg://field-guide` — persona + technique catalog + signal-reading heuristics + verdict semantics + response format. **Read this before analyzing a file.**
@@ -111,6 +127,8 @@ Start with `stegg-mcp` (after `pip install -e '.[mcp]'`). Container-to-container
 
 ## Common flows
 
+**Step 0 (first call in any session):** `stegg_capabilities`. Runtime feature-detection probe — reports which optional Python packages, external binaries, and technique keys this build actually supports. Cheap, no args. **Call once per session and cache the answer** so you never recommend a technique the host environment can't run.
+
 **Analyze a suspicious image**
 1. `stegg_read_metadata` — cheap plaintext-in-chunks catch.
 2. `stegg_triage` — structural + statistical + bit-plane sweep with a verdict.
@@ -120,6 +138,14 @@ Start with `stegg-mcp` (after `pip install -e '.[mcp]'`). Container-to-container
 **Analyze pasted suspicious text**
 1. `stegg_text_steg_message` — full detector suite inline.
 2. If a detector hits: `stegg_text_decode` with the matching method.
+
+**Analyze a suspicious PCAP**
+1. `stegg_network_methods` — see which techniques the current build supports (also confirms `scapy` is available).
+2. `stegg_network_detect` — statistical steganalysis over the capture.
+3. If detect flags a method: `stegg_network_decode` with that method to extract the payload.
+
+**Detect a jailbreak payload in a file (image or text)**
+1. `stegg_jailbreak_detect` — one call, sweeps filename, PNG chunks, LSB pixels, trailing bytes after IEND, Unicode obfuscation, and fullwidth-ASCII density. Blue-team default.
 
 **Hide data in an image**
 1. `stegg_encode_manual` for LSB, or `stegg_encode_metadata` for chunk-smuggling.
