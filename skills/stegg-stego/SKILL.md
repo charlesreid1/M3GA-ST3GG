@@ -9,9 +9,7 @@ HTTP MCP server exposing ~36 steganography tools across six families — **triag
 
 ## Server
 
-Endpoint: `http://<host>:8765/mcp` (Streamable HTTP, stateless).
-
-Start with `stegg-mcp` (after `pip install -e '.[mcp]'`). Container-to-container use — no auth, binds `0.0.0.0` by default.
+Streamable HTTP at `http://<host>:8765/mcp` after `pip install -e '.[mcp]' && stegg-mcp`. See `st3ggmcp/README.md` for stdio config, port flags, and auth caveats.
 
 ## When to use this vs. `stegg-cli`
 
@@ -123,6 +121,7 @@ The autogen block above is the menu; this section is the decision guide. Reach f
   - **SUSPICIOUS** — HIGH structural finding, OR two statistical probes corroborate on the same channel.
   - **INCONCLUSIVE** — MEDIUM structural, OR any single statistical probe hit.
   - **CLEAN** — nothing above threshold. Detection has real failure modes; CLEAN is a statement about what the probes saw, not a guarantee.
+  - Full rules and calibration notes in `stegg://field-guide`.
 - Encoders write to `output_path` (or a `stegg_`-prefixed sibling of the input).
 
 ## Common flows
@@ -154,13 +153,3 @@ The autogen block above is the menu; this section is the decision guide. Reach f
 **Hide data in text**
 1. `stegg_text_capacity` — pre-flight the cover.
 2. `stegg_text_encode` with a method matched to the transport (see `stegg://field-guide` for transport survival).
-
-## Installation
-
-```bash
-pip install -e '.[mcp]'
-stegg-mcp                    # defaults: 0.0.0.0:8765, endpoint /mcp
-stegg-mcp --port 9000
-```
-
-Point any MCP client at `http://<host>:8765/mcp`.
