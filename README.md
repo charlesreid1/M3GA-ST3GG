@@ -336,11 +336,20 @@ stegg-cli encode -i carrier.png -t "secret" -o stegged.png
 stegg-cli decode -i stegged.png
 stegg-cli analyze suspect.png --full
 
-# MCP server (stdio transport — results go into agent context)
-stegg-mcp  # or: uv run --extra mcp python3 mcp_server.py
+# MCP server (Streamable HTTP by default, stdio also available — results go into agent context)
+stegg-mcp
 ```
 
-See `skills/stegg-cli/` and `skills/stegg-stego/` for harness-agnostic agent skills, and `AGENTS.md` for the quick-reference guide.
+Four docs describe the agent surface. Each has a different audience and a different loading moment — don't conflate them:
+
+| Doc | Purpose | Read by |
+| --- | --- | --- |
+| [`AGENTS.md`](AGENTS.md) | Repo orientation, install, entry-point framing, ground rules | An agent dropped into the repo to modify code |
+| [`skills/stegg-cli/SKILL.md`](skills/stegg-cli/SKILL.md) | When-to-fire triggers + invocation recipes for the subprocess CLI | The host's skill picker, before touching the repo |
+| [`skills/stegg-stego/SKILL.md`](skills/stegg-stego/SKILL.md) + [`REFERENCE.md`](skills/stegg-stego/REFERENCE.md) | When-to-fire triggers, tool-selection heuristics, workflow recipes for the MCP server (SKILL.md); exhaustive per-tool spec (REFERENCE.md) | The host's skill picker (SKILL.md); the agent mid-session when it needs argument tables (REFERENCE.md) |
+| [`st3ggmcp/field_guide.md`](st3ggmcp/field_guide.md) | Analyst persona, technique catalog, signal-reading heuristics, transport-survival tables | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
+
+For the full audience-and-when-read matrix, plus the rule about which doc owns what, see [`AGENTS.md#docs-map`](AGENTS.md#docs-map). To make the skills discoverable in Claude Code, follow the symlink recipe in [`AGENTS.md#install-the-skills`](AGENTS.md#install-the-skills).
 
 ---
 
