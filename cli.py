@@ -751,6 +751,7 @@ app.add_typer(inject_app, name="inject")
 
 @inject_app.command("filename")
 def inject_filename(
+    ctx: typer.Context,
     template: str = typer.Option("chatgpt_decoder", "--template", "-t", help="Filename template"),
     channels: str = typer.Option("RGB", "--channels", "-c", help="Channel string"),
     count: int = typer.Option(1, "--count", "-n", help="Number of filenames to generate"),
@@ -761,25 +762,50 @@ def inject_filename(
     Templates: chatgpt_decoder, claude_decoder, gemini_decoder, universal_decoder,
                system_override, roleplay_trigger, dev_mode, subtle, custom
     """
+    json_mode = ctx.obj.get("json_mode", False)
+    filenames = [generate_injection_filename(template, channels) for _ in range(count)]
+
+    if json_mode:
+        _out_json({
+            "status": "ok",
+            "filenames": filenames,
+            "template": template,
+            "channels": channels,
+            "count": count,
+        })
+
     print_banner(small=True)
     console.print(section_header("Injection Filename Generator"))
     console.print()
 
-    for i in range(count):
-        filename = generate_injection_filename(template, channels)
+    for filename in filenames:
         console.print(f"  [green]{filename}[/green]")
 
     console.print(f"\n{FOOTER}")
 
 
 @inject_app.command("templates")
-def inject_templates():
+def inject_templates(ctx: typer.Context):
     """List available jailbreak templates"""
+    json_mode = ctx.obj.get("json_mode", False)
+    names = get_jailbreak_names()
+
+    if json_mode:
+        entries = []
+        for name in names:
+            template = get_jailbreak_template(name)
+            entries.append({
+                "name": name,
+                "length": len(template),
+                "preview": template[:80].replace('\n', ' '),
+            })
+        _out_json({"status": "ok", "templates": entries, "count": len(entries)})
+
     print_banner(small=True)
     console.print(section_header("Jailbreak Templates"))
     console.print()
 
-    for name in get_jailbreak_names():
+    for name in names:
         template = get_jailbreak_template(name)
         preview = template[:80].replace('\n', ' ') + "..." if len(template) > 80 else template.replace('\n', ' ')
         console.print(f"  [cyan]{name}[/cyan]")
@@ -844,19 +870,28 @@ def inject_compose(
 
 @inject_app.command("detect")
 def inject_detect(
+    ctx: typer.Context,
     target: Path = typer.Option(..., "--target", "-i", help="Image or text file to scan"),
     full: bool = typer.Option(False, "--full", help="Full-spectrum scan across all vectors"),
 ):
     """Scan a file for jailbreak / prompt-injection indicators"""
-    print_banner(small=True)
-    console.print(section_header("Jailbreak Detect"))
-    console.print()
+    json_mode = ctx.obj.get("json_mode", False)
 
     suffix = target.suffix.lower()
     if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif"}:
         result = detect_full_injection_package(image_path=str(target))
     else:
         result = detect_full_injection_package(text_path=str(target))
+
+    if json_mode:
+        payload = {"status": "ok", **result}
+        if not full:
+            payload.pop("vectors", None)
+        _out_json(payload)
+
+    print_banner(small=True)
+    console.print(section_header("Jailbreak Detect"))
+    console.print()
 
     severity = result.get("severity", "clean")
     color = {"clean": "green", "low": "yellow", "medium": "orange3", "high": "red"}.get(severity, "white")
@@ -1366,10 +1401,13 @@ def text_decode_cmd(
 
 @text_app.command("capacity")
 def text_capacity_cmd(
+    ctx: typer.Context,
     method: str = typer.Option(..., "--method", "-m", help=f"One of: {', '.join(text_core.METHODS)}"),
     cover: str = typer.Option(..., "--cover", "-c", help="Cover text file path (or '-' for stdin)"),
 ):
     """Report how many payload bytes a cover can carry under a method."""
+    json_mode = ctx.obj.get("json_mode", False)
+
     if method not in text_core.METHODS:
         error(f"unknown method '{method}'. Try one of: {', '.join(text_core.METHODS)}")
         raise typer.Exit(1)
@@ -1379,6 +1417,10 @@ def text_capacity_cmd(
         error(f"failed to read cover: {e}")
         raise typer.Exit(1)
     rep = text_core.capacity(cover_text, method)
+
+    if json_mode:
+        _out_json({"status": "ok", "method": method, **rep})
+
     table = Table(show_header=False, box=box.SIMPLE)
     table.add_column("Field", style="cyan")
     table.add_column("Value")
