@@ -8,7 +8,7 @@
     "era_bounds": ["1994-01-01", null],
     "confidence": "primary",
     "aliases": ["lsb-layer", "least-significant-bit"],
-    "citations": ["anderson-petitcolas-1998-survey", "westfeld-pfitzmann-1999-chi2"],
+    "citations": ["anderson-petitcolas-1998-survey", "westfeld-pfitzmann-1999-chi2", "ker-2005-ws", "simmons-1983-prisoners"],
     "see_also": ["layer-coefficient", "layer-container"],
     "technical_body": {
       "canonical_over": ["raw pixel bytes"],

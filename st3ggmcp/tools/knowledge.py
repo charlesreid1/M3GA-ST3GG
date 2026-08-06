@@ -144,7 +144,7 @@ async def execute_bibliography(cite_id: str | None = None, **_kw) -> str:
     if not cite_id:
         return truncate_json({
             "sources": [records.public_view(r) for r in store.in_category("bibliography")]
-        }, max_chars=12000)
+        }, max_chars=32000)
     rec = store.get(cite_id) or store.resolve(cite_id)
     if rec is None or rec.get("category") != "bibliography":
         ids = [r["id"] for r in store.in_category("bibliography")]

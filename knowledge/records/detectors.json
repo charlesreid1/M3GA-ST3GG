@@ -27,13 +27,13 @@
     "era_bounds": ["2001-06-01", null],
     "confidence": "primary",
     "aliases": ["rs", "rs-analysis"],
-    "citations": ["fridrich-2001-rs"],
+    "citations": ["fridrich-2001-rs", "ker-2005-ws"],
     "see_also": ["image-lsb", "det-chi-square", "det-spa"],
     "technical_body": {
       "probe_type": "statistical",
       "works_on": ["PNG LSB", "BMP LSB", "PVD (weakly)"],
       "output_semantics": "estimated embedding rate p in [0, 1]",
-      "false_positive_notes": "false-fires on noisy carriers; can differ from SPA on the same image (different assumptions)"
+      "false_positive_notes": "false-fires on noisy carriers; can differ from SPA on the same image (different assumptions); Ker 2005 WS is more accurate at low embedding rates"
     },
     "notes": "Smoothness-based. Groups pixels into Regular / Singular / Neutral flipping-behavior classes, exploits the fact that LSB replacement asymmetrically shifts those class populations."
   },

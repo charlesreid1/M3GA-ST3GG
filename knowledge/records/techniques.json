@@ -401,7 +401,7 @@
     "era_bounds": ["1994-01-01", null],
     "confidence": "primary",
     "aliases": ["lsb", "png-lsb", "image-lsb"],
-    "citations": ["st3gg-v3-header", "st3gg-field-guide", "westfeld-pfitzmann-1999-chi2", "fridrich-2001-rs"],
+    "citations": ["st3gg-v3-header", "st3gg-field-guide", "westfeld-pfitzmann-1999-chi2", "fridrich-2001-rs", "kessler-primer", "zsteg", "stegoappdb", "alaska2-competition", "st3gg-repo-readme"],
     "see_also": ["image-pvd", "image-dct", "layer-bit"],
     "technical_body": {
       "code_module": "img_core.encode / img_core.decode",

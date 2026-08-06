@@ -12,7 +12,7 @@
     "see_also": ["image-lsb", "image-f5", "image-dct"],
     "technical_body": {
       "claim": "LSB steg survives JPEG re-encoding (even at Q=99)",
-      "match_patterns": ["\\blsb\\b", "\\bjpeg\\b", "surviv"],
+      "match_patterns": ["\\blsb\\b", "\\bjpeg\\b", "(surviv|robust|through|safely|safe\\s|round.?trip|works?)"],
       "verdict": "false",
       "correct_form": "LSB in pixel space dies to any lossy re-encode, including JPEG at Q99. JPEG quantizes DCT coefficients; the inverse-DCT rounding trip alone destroys pixel LSBs. Use coefficient-domain steg (F5, jsteg, or the ST3GG dct_encode robust variants) if the payload must survive JPEG. Even those only survive the *first* re-encode reliably.",
       "common_source": "confusion between pixel-domain LSB and JPEG DCT-domain LSB"
@@ -32,7 +32,7 @@
     "see_also": ["text-cyrillic-homoglyph", "text-cjk-homoglyph"],
     "technical_body": {
       "claim": "Homoglyph text steg (cyrillic_homoglyph / cjk_homoglyph) survives Unicode normalization",
-      "match_patterns": ["homoglyph", "(nfkc|normali[zs])", "surviv"],
+      "match_patterns": ["homoglyph", "(nfkc|normali[zs])", "(surviv|robust|safe|through|resistant)"],
       "verdict": "false",
       "correct_form": "Homoglyphs die to NFKC. Cyrillic а (U+0430) normalizes to Latin a (U+0061); fullwidth ， (U+FF0C) normalizes to ASCII ,. Any pipeline that runs NFKC on input (search boxes, some DB columns, aggressive input sanitizers) destroys the payload. Homoglyphs survive NFC but not NFKC. They still survive plain UTF-8 pipelines, chat clients, and code — most real deliveries are NFC-only.",
       "common_source": "conflating NFC (safe) and NFKC (unsafe) normalization"
