@@ -37,11 +37,13 @@ from starlette.routing import Mount, Route
 from starlette.types import Receive, Scope, Send
 
 from .tools import TOOL_EXECUTORS, TOOL_SCHEMAS
+from .tools.knowledge import _iter_lore, _find_lore, KNOWLEDGE_ROOT
 
 logger = logging.getLogger(__name__)
 
 FIELD_GUIDE_PATH = Path(__file__).parent / "field_guide.md"
 FIELD_GUIDE_URI = "stegg://field-guide"
+LORE_URI_PREFIX = "stegg://"
 
 
 def build_server() -> Server:
@@ -74,10 +76,9 @@ def build_server() -> Server:
 
     @server.list_resources()
     async def _list_resources() -> list[Resource]:
-        if not FIELD_GUIDE_PATH.exists():
-            return []
-        return [
-            Resource(
+        resources: list[Resource] = []
+        if FIELD_GUIDE_PATH.exists():
+            resources.append(Resource(
                 uri=FIELD_GUIDE_URI,
                 name="ST3GG field guide",
                 description=(
@@ -86,15 +87,31 @@ def build_server() -> Server:
                     "verdict semantics, code snippets. Read this before analyzing any file."
                 ),
                 mimeType="text/markdown",
-            )
-        ]
+            ))
+        # Prose corpus files as MCP resources at stegg://<topic>/<name>
+        for topic, name, _path in _iter_lore(KNOWLEDGE_ROOT):
+            resources.append(Resource(
+                uri=f"{LORE_URI_PREFIX}{topic}/{name}",
+                name=f"{topic}/{name}",
+                description=f"ST3GG knowledge corpus: {topic}/{name}",
+                mimeType="text/markdown",
+            ))
+        return resources
 
     @server.read_resource()
     async def _read_resource(uri) -> str:
-        if str(uri) == FIELD_GUIDE_URI:
+        uri_str = str(uri)
+        if uri_str == FIELD_GUIDE_URI:
             if FIELD_GUIDE_PATH.exists():
                 return FIELD_GUIDE_PATH.read_text(encoding="utf-8")
             return "field guide not found on server"
+        if uri_str.startswith(LORE_URI_PREFIX):
+            rest = uri_str[len(LORE_URI_PREFIX):]
+            if "/" in rest:
+                topic, name = rest.split("/", 1)
+                p = _find_lore(KNOWLEDGE_ROOT, topic, name)
+                if p is not None:
+                    return p.read_text(encoding="utf-8")
         raise ValueError(f"unknown resource: {uri}")
 
     return server

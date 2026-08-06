@@ -12,11 +12,12 @@
     "see_also": ["image-lsb", "image-f5", "image-dct"],
     "technical_body": {
       "claim": "LSB steg survives JPEG re-encoding (even at Q=99)",
+      "match_patterns": ["\\blsb\\b", "\\bjpeg\\b", "surviv"],
       "verdict": "false",
       "correct_form": "LSB in pixel space dies to any lossy re-encode, including JPEG at Q99. JPEG quantizes DCT coefficients; the inverse-DCT rounding trip alone destroys pixel LSBs. Use coefficient-domain steg (F5, jsteg, or the ST3GG dct_encode robust variants) if the payload must survive JPEG. Even those only survive the *first* re-encode reliably.",
       "common_source": "confusion between pixel-domain LSB and JPEG DCT-domain LSB"
     },
-    "notes": "The single most common wrong claim about image stego. Powers `stegg_verify_claim` for the pattern 'LSB.*JPEG.*surviv(es|al)'."
+    "notes": "The single most common wrong claim about image stego."
   },
   {
     "id": "myth-homoglyph-nfkc",
@@ -31,6 +32,7 @@
     "see_also": ["text-cyrillic-homoglyph", "text-cjk-homoglyph"],
     "technical_body": {
       "claim": "Homoglyph text steg (cyrillic_homoglyph / cjk_homoglyph) survives Unicode normalization",
+      "match_patterns": ["homoglyph", "(nfkc|normali[zs])", "surviv"],
       "verdict": "false",
       "correct_form": "Homoglyphs die to NFKC. Cyrillic а (U+0430) normalizes to Latin a (U+0061); fullwidth ， (U+FF0C) normalizes to ASCII ,. Any pipeline that runs NFKC on input (search boxes, some DB columns, aggressive input sanitizers) destroys the payload. Homoglyphs survive NFC but not NFKC. They still survive plain UTF-8 pipelines, chat clients, and code — most real deliveries are NFC-only.",
       "common_source": "conflating NFC (safe) and NFKC (unsafe) normalization"
@@ -49,6 +51,7 @@
     "see_also": ["image-png-text-chunk", "image-png-private-chunk", "transport-slack-upload"],
     "technical_body": {
       "claim": "Slack preserves PNG tEXt/iTXt/zTXt chunks and JPEG EXIF/XMP/IPTC on file upload",
+      "match_patterns": ["slack", "(metadata|exif|xmp|iptc|tetxt|itxt|ztxt|t[ei]xt|chunk)", "(preserv|surviv|keep|retain)"],
       "verdict": "false",
       "correct_form": "Slack STRIPS named PNG text chunks (tEXt, iTXt, zTXt) and STRIPS JPEG EXIF/XMP/IPTC on upload. Slack DOES preserve 4-char PNG private chunks (like `stEg`) and does preserve pixel bytes (PNG IDAT byte-identical). If you need metadata to survive Slack upload, use a private chunk; if you need EXIF-flavored data, embed it in a PNG private chunk instead.",
       "common_source": "generalizing from 'private chunks survive' to 'metadata survives'"
@@ -67,6 +70,7 @@
     "see_also": ["text-zero-width", "transport-terminal-stdout"],
     "technical_body": {
       "claim": "Zero-width Unicode chars are invisible everywhere",
+      "match_patterns": ["zero.?width", "invisible", "(every|all|any)where"],
       "verdict": "needs_qualification",
       "correct_form": "Zero-width chars (ZWSP U+200B, ZWNJ U+200C, ZWJ U+200D, BOM U+FEFF) render as nothing in most rich-text UIs and are preserved by most copy/paste. They may be filtered by (a) terminal windows on mouse-copy, (b) aggressive input sanitizers, (c) some search boxes that NFKC input. Use pbcopy / xclip / clip.exe if you need them to round-trip through a terminal.",
       "common_source": "extrapolating from 'invisible in my browser' to 'invisible everywhere'"
@@ -85,6 +89,7 @@
     "see_also": ["image-f5", "image-jsteg"],
     "technical_body": {
       "claim": "steghide can read files produced by OutGuess (or F5, or jsteg)",
+      "match_patterns": ["steghide", "(outguess|f5|jsteg)"],
       "verdict": "false",
       "correct_form": "steghide, OutGuess, F5, and jsteg are separate tools with incompatible formats. steghide uses a graph-matching-based JPEG scheme with its own header + AES256; OutGuess preserves DCT histograms with a different embedding strategy; F5 uses matrix encoding + shrinkage handling; jsteg does LSB replacement on nonzero DCT coefficients. A file made by one is not readable by another.",
       "common_source": "the common 'run every JPEG stego tool' CTF approach; each tool needs its own decoder"
@@ -103,6 +108,7 @@
     "see_also": ["image-lsb"],
     "technical_body": {
       "claim": "If every alpha-channel byte's low bit is 1, that's an encrypted payload",
+      "match_patterns": ["alpha", "(all.?ones|=\\s*255|lsb\\s*=\\s*1|every.*(byte|bit))", "(payload|encrypted|cipher)"],
       "verdict": "false",
       "correct_form": "Alpha=255-everywhere (all-ones LSB on the alpha channel) usually means (a) the source image was fully opaque, or (b) the hider deliberately kept alpha at 255 as a fingerprint while writing to RGB. It is NOT ciphertext. Note it as a fingerprint and move to RGB — that's where the payload almost certainly is.",
       "common_source": "chi-square false-fire on a uniform channel"
@@ -121,6 +127,7 @@
     "see_also": ["image-f5", "image-jsteg", "image-dct", "sv-f5-slack-upload"],
     "technical_body": {
       "claim": "JPEG DCT steg (F5, jsteg, OutGuess) survives any downstream JPEG re-encode",
+      "match_patterns": ["(dct|f5|jsteg|outguess)", "(re.?encod|recompress|re.?quantiz|slack|whatsapp|telegram)", "surviv"],
       "verdict": "false",
       "correct_form": "DCT steg only survives if the destination quantization table matches (or nearly matches) the source. Slack, WhatsApp, Telegram photo mode all re-quantize to their own tables — F5 and jsteg die. Tuned DCT variants (medium/high robustness on ST3GG's dct_encode) can survive one specific re-encoder if pre-flighted, but that's a fragile luck-based case, not a general property.",
       "common_source": "confusing 'DCT-domain is more robust than LSB' with 'DCT-domain is transport-agnostic'"
@@ -139,6 +146,7 @@
     "see_also": ["emoji-tag-sequence", "transport-slack-paste", "transport-slack-snippet"],
     "technical_body": {
       "claim": "The 'black flag + tag chars' payload survives when pasted into a Slack message body",
+      "match_patterns": ["(emoji|tag|black.?flag)", "slack", "(paste|body|post)"],
       "verdict": "false",
       "correct_form": "Slack canonicalizes emoji to :colon_form: on the wire; the receiver renders a fresh base emoji with no trailing tag chars. Any payload riding an emoji through slack_paste is downstream of that canonicalization. Use slack_snippet instead — raw bytes bypass the render pipeline.",
       "common_source": "generalizing from raw-file transports (survives) to rendered-post transports (does not)"
