@@ -1,0 +1,93 @@
+[
+  {
+    "id": "layer-bit",
+    "name": "Bit-level layer",
+    "category": "layer",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["1994-01-01", null],
+    "confidence": "primary",
+    "aliases": ["lsb-layer", "least-significant-bit"],
+    "citations": ["anderson-petitcolas-1998-survey", "westfeld-pfitzmann-1999-chi2"],
+    "see_also": ["layer-coefficient", "layer-container"],
+    "technical_body": {
+      "canonical_over": ["raw pixel bytes"],
+      "survives": ["byte-identical CDN re-serve", "lossless re-save (PNG, BMP, WAV)"],
+      "dies_to": ["any lossy re-encode (JPEG, WebP-lossy, MP3, WhatsApp photo)", "resize", "crop"],
+      "typical_bpp": "1-4 bits per channel per pixel"
+    },
+    "notes": "The classic LSB layer. Payload lives in the low bit(s) of raw sample values (image pixels, audio samples). Cheapest to encode, first thing every statistical detector attacks."
+  },
+  {
+    "id": "layer-coefficient",
+    "name": "Transform-coefficient layer (DCT / DWT)",
+    "category": "layer",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1997-01-01", null],
+    "confidence": "primary",
+    "aliases": ["dct-layer", "coefficient-domain"],
+    "citations": ["westfeld-2001-f5", "provos-2001-outguess", "itu-t81-jpeg"],
+    "see_also": ["layer-bit"],
+    "technical_body": {
+      "canonical_over": ["quantized DCT coefficients (JPEG) or DWT subbands"],
+      "survives": ["JPEG re-quantization if the codec's quantization table matches", "moderate cropping / rotation with spread-spectrum variants"],
+      "dies_to": ["cross-codec re-encode with a different quantization table", "aggressive re-quantization (Q≪ original)"]
+    },
+    "notes": "F5, jsteg, OutGuess, JMiPOD all live here. Robust to the JPEG codec's own psychovisual pass but not to arbitrary re-encoding."
+  },
+  {
+    "id": "layer-character",
+    "name": "Character-level layer (Unicode codepoints)",
+    "category": "layer",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["codepoint-layer", "unicode-layer"],
+    "citations": ["rfc-3629-utf8", "unicode-tr36-security", "unicode-nfkc"],
+    "see_also": ["layer-semantic"],
+    "technical_body": {
+      "canonical_over": ["UTF-8 byte sequences"],
+      "survives": ["copy/paste through Unicode-preserving pipelines", "most chat clients that don't NFKC on input"],
+      "dies_to": ["NFKC normalization", "aggressive Unicode sanitizers", "terminal glyph canonicalization for zero-width chars"]
+    },
+    "notes": "Zero-width, homoglyphs, variation selectors, combining marks, tag block. Every text-steg technique operates at this layer. NFKC is the boss enemy."
+  },
+  {
+    "id": "layer-container",
+    "name": "Container / structural layer",
+    "category": "layer",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["structural-layer", "chunk-layer"],
+    "citations": ["rfc-2083-png", "albertini-polyglots", "iso-32000-pdf"],
+    "see_also": ["layer-bit", "layer-semantic"],
+    "technical_body": {
+      "canonical_over": ["the parsed file structure — chunks, marker segments, objects"],
+      "survives": ["byte-identical file transfers (HTTP raw, email attachment, GitHub upload)", "parsers that preserve unknown chunks (PNG private chunks, ZIP extra fields)"],
+      "dies_to": ["structural sanitizers that only preserve fields their parser consumes", "format-normalizing re-encoders that strip unrecognized data"]
+    },
+    "notes": "PNG tEXt/private chunks, trailing bytes past IEND/EOI, ZIP extra fields / comments, PDF incremental updates. Polyglot files are the ultimate abuse of this layer."
+  },
+  {
+    "id": "layer-semantic",
+    "name": "Semantic / surface-form layer",
+    "category": "layer",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["1980-01-01", null],
+    "confidence": "primary",
+    "aliases": ["surface-form", "meaning-layer"],
+    "citations": ["anderson-petitcolas-1998-survey"],
+    "see_also": ["layer-character"],
+    "technical_body": {
+      "canonical_over": ["the meaning a reader assigns to the message"],
+      "survives": ["any pipeline that preserves the words themselves"],
+      "dies_to": ["translation", "aggressive summarization", "paraphrase"]
+    },
+    "notes": "Capitalization, word choice, punctuation, whitespace patterns interpreted as bits. Hardest to normalize, hardest to hide reliably. `capitalization` and `mathbold` methods live at this layer."
+  }
+]
