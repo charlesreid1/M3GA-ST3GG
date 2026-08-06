@@ -1,0 +1,116 @@
+[
+  {
+    "id": "det-chi-square",
+    "name": "Chi-square attack",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["1999-09-01", null],
+    "confidence": "primary",
+    "aliases": ["chi-square", "chi2"],
+    "citations": ["westfeld-pfitzmann-1999-chi2"],
+    "see_also": ["image-lsb", "image-jsteg", "det-rs", "det-spa"],
+    "technical_body": {
+      "probe_type": "statistical",
+      "works_on": ["PNG LSB", "BMP LSB", "jsteg (JPEG DCT LSB)"],
+      "output_semantics": "p-value / embedding-rate estimate (higher = more suspicious)",
+      "false_positive_notes": "false-fires on smooth carriers (uniform gradients, near-monochrome regions); do not use as a single-probe verdict"
+    },
+    "notes": "The original LSB-steganalysis test. Compares observed pair-of-values distribution to the null (untouched) distribution. Detects sequential LSB embedding; fails against random-traversal / matching / spread schemes."
+  },
+  {
+    "id": "det-rs",
+    "name": "RS analysis (Fridrich et al.)",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2001-06-01", null],
+    "confidence": "primary",
+    "aliases": ["rs", "rs-analysis"],
+    "citations": ["fridrich-2001-rs"],
+    "see_also": ["image-lsb", "det-chi-square", "det-spa"],
+    "technical_body": {
+      "probe_type": "statistical",
+      "works_on": ["PNG LSB", "BMP LSB", "PVD (weakly)"],
+      "output_semantics": "estimated embedding rate p in [0, 1]",
+      "false_positive_notes": "false-fires on noisy carriers; can differ from SPA on the same image (different assumptions)"
+    },
+    "notes": "Smoothness-based. Groups pixels into Regular / Singular / Neutral flipping-behavior classes, exploits the fact that LSB replacement asymmetrically shifts those class populations."
+  },
+  {
+    "id": "det-spa",
+    "name": "Sample Pair Analysis (SPA)",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2003-01-01", null],
+    "confidence": "primary",
+    "aliases": ["spa", "sample-pair-analysis"],
+    "citations": ["dumitrescu-2003-spa"],
+    "see_also": ["image-lsb", "det-chi-square", "det-rs"],
+    "technical_body": {
+      "probe_type": "statistical",
+      "works_on": ["PNG LSB", "BMP LSB"],
+      "output_semantics": "estimated embedding rate p in [0, 1]",
+      "false_positive_notes": "different failure modes than RS; a big SPA/RS mismatch usually means the embedding scheme isn't naive LSB replacement"
+    },
+    "notes": "Pair-frequency-based. Complements RS: run both, compare, disagreement is a signal."
+  },
+  {
+    "id": "det-bit-plane-entropy",
+    "name": "Bit-plane entropy",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["bit-plane-entropy", "bit-plane-visual"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "det-chi-square"],
+    "technical_body": {
+      "probe_type": "statistical + visual",
+      "works_on": ["PNG LSB", "BMP LSB"],
+      "output_semantics": "Shannon entropy on a per-bit-plane basis; also visualizable as an image",
+      "false_positive_notes": "clean top bit-planes usually show structure; clean low bit-planes look near-random already"
+    },
+    "notes": "Two uses: (1) numeric entropy per plane — low = uncompressed structured payload, high = encrypted/compressed; (2) render each plane as a black/white image (\"visual attack\") to spot payload boundaries."
+  },
+  {
+    "id": "det-f5-signature",
+    "name": "F5 signature scan",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "community",
+    "aliases": ["f5-sig"],
+    "citations": ["westfeld-2001-f5", "stegdetect"],
+    "see_also": ["image-f5"],
+    "technical_body": {
+      "probe_type": "signature",
+      "works_on": ["JPEG (F5-produced)"],
+      "output_semantics": "hit / miss with confidence",
+      "false_positive_notes": "byte-scanner variant false-fires on random-looking data (e.g. encrypted payloads in unrelated files); PNG hits are almost always false positives since F5 is a JPEG tool"
+    },
+    "notes": "Detects the F5 header signature in JPEG bytes. StegDetect implements this."
+  },
+  {
+    "id": "det-pvd-histogram",
+    "name": "PVD difference-histogram analysis",
+    "category": "detector",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2005-01-01", null],
+    "confidence": "community",
+    "aliases": ["pvd-detect"],
+    "citations": ["anderson-petitcolas-1998-survey"],
+    "see_also": ["image-pvd"],
+    "technical_body": {
+      "probe_type": "statistical",
+      "works_on": ["PVD-embedded images"],
+      "output_semantics": "step-anomalies at PVD range boundaries",
+      "false_positive_notes": "noisier detector than chi-square/RS"
+    },
+    "notes": "Looks for the tell-tale spikes / dips at PVD range boundaries in the pixel-difference histogram."
+  }
+]
