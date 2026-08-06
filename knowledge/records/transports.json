@@ -1,0 +1,338 @@
+[
+  {
+    "id": "transport-slack-upload",
+    "name": "Slack file upload",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2013-01-01", null],
+    "confidence": "primary",
+    "aliases": ["slack_upload", "slack-file"],
+    "citations": ["st3gg-transport-matrix", "st3gg-transport-results-slack"],
+    "see_also": ["transport-slack-paste", "transport-slack-snippet"],
+    "technical_body": {
+      "api_send": "files.getUploadURLExternal + files.completeUploadExternal",
+      "api_retrieve": "files.info -> url_private_download",
+      "canonical_layer": "file-bytes",
+      "known_strips": ["PNG tEXt/iTXt/zTXt", "JPEG EXIF/XMP/IPTC", "PNG trailing bytes past IEND", "JPEG trailing bytes past EOI (via re-encode)"],
+      "known_recodes": ["JPEG (baseline and progressive)", "WebP", "TIFF"],
+      "retrieval_gotcha": "url_private_download requires the bot token; public URLs are one-shot"
+    },
+    "notes": "File-bytes canonical form. PNG LSB (all channel/bit/strategy variants tested) is byte-identical; JPEG is always re-encoded; PNG private chunks pass through but named text chunks don't."
+  },
+  {
+    "id": "transport-slack-paste",
+    "name": "Slack message body paste",
+    "category": "transport",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2013-01-01", null],
+    "confidence": "primary",
+    "aliases": ["slack_paste", "slack-body"],
+    "citations": ["st3gg-transport-matrix", "st3gg-transport-results-slack"],
+    "see_also": ["transport-slack-upload", "transport-slack-snippet"],
+    "technical_body": {
+      "api_send": "chat.postMessage",
+      "api_retrieve": "conversations.history — walk blocks[].rich_text_section.elements[] and read the `unicode` field on emoji nodes",
+      "canonical_layer": "rendered-post",
+      "known_strips": ["Unicode tag block (invisible_ink) from body", "emoji tag sequences", "trailing / repeated whitespace runs"],
+      "known_recodes": ["emoji to :colon_form: in the flat .text field (VS-16 / skintone modifiers lost if consumer reads .text instead of blocks)"],
+      "length_cap": "~4000 chars of colon-form-expanded content",
+      "retrieval_gotcha": "conversations.history `.text` is (a) colon-form and (b) length-capped — do not compare against it"
+    },
+    "notes": "Rendered-post canonical form. 13 of 15 text techniques survive; whitespace and invisible_ink recoded. Emoji-attached data (VS-16, skintone bits, tag sequences) rides `blocks` — only reliable when both sides walk the blocks tree."
+  },
+  {
+    "id": "transport-slack-snippet",
+    "name": "Slack text snippet upload",
+    "category": "transport",
+    "carrier_family": "text",
+    "layer": "container",
+    "era_bounds": ["2013-01-01", null],
+    "confidence": "primary",
+    "aliases": ["slack_snippet", "slack-code-snippet"],
+    "citations": ["st3gg-transport-matrix", "st3gg-transport-results-slack"],
+    "see_also": ["transport-slack-paste"],
+    "technical_body": {
+      "api_send": "files.upload snippet_type=text (deprecated as of 2026-07 but working)",
+      "api_retrieve": "url_private_download",
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": [],
+      "retrieval_gotcha": "requires the bot token; treat as an attachment fetch"
+    },
+    "notes": "Raw bytes end-to-end. Strictly stronger than paste for text stego — every text technique tested survives, including whitespace and invisible_ink that recode on paste."
+  },
+  {
+    "id": "transport-discord-upload",
+    "name": "Discord file upload",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2015-05-13", null],
+    "confidence": "community",
+    "aliases": ["discord_upload"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-slack-upload"],
+    "technical_body": {
+      "api_send": "Discord REST API POST /channels/{id}/messages with multipart attachments",
+      "canonical_layer": "file-bytes (mostly — some server-side re-encode for stickers/emojis)",
+      "known_strips": ["reported: some EXIF stripping on large images"],
+      "known_recodes": ["reported: WebP conversion for oversize uploads"],
+      "retrieval_gotcha": "CDN URLs are ephemeral; refresh via message fetch"
+    },
+    "notes": "Community-reported behavior; no ST3GG probe run yet. Treat entries in survival.json as folklore until measured."
+  },
+  {
+    "id": "transport-discord-paste",
+    "name": "Discord message body paste",
+    "category": "transport",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2015-05-13", null],
+    "confidence": "community",
+    "aliases": ["discord_paste"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-slack-paste"],
+    "technical_body": {
+      "canonical_layer": "rendered-post",
+      "known_strips": ["reported: whitespace normalization"],
+      "known_recodes": ["custom emoji rendered as :name:; standard emoji preserved as codepoints"]
+    },
+    "notes": "Similar canonical layer to slack_paste; behavior differs in the specifics. No dedicated probe yet."
+  },
+  {
+    "id": "transport-telegram-photo",
+    "name": "Telegram photo attachment (compressed)",
+    "category": "transport",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2013-08-14", null],
+    "confidence": "community",
+    "aliases": ["telegram_photo"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-telegram-file", "transport-whatsapp-photo"],
+    "technical_body": {
+      "canonical_layer": "perceptual-approximation",
+      "known_strips": ["EXIF/XMP/IPTC"],
+      "known_recodes": ["JPEG re-encode at Telegram's target quality"]
+    },
+    "notes": "Photo-mode uploads recompress. Kills LSB; DCT-robust variants may or may not survive. Use file mode instead when payload matters."
+  },
+  {
+    "id": "transport-telegram-file",
+    "name": "Telegram file attachment (uncompressed)",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2013-08-14", null],
+    "confidence": "community",
+    "aliases": ["telegram_file"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-telegram-photo"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "Send-as-file mode preserves bytes end-to-end. The happy path for image and text stego on Telegram."
+  },
+  {
+    "id": "transport-whatsapp-photo",
+    "name": "WhatsApp photo attachment",
+    "category": "transport",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2011-01-01", null],
+    "confidence": "community",
+    "aliases": ["whatsapp_photo"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-whatsapp-document"],
+    "technical_body": {
+      "canonical_layer": "perceptual-approximation",
+      "known_strips": ["all EXIF/XMP/IPTC"],
+      "known_recodes": ["aggressive JPEG re-encode with fixed Q"]
+    },
+    "notes": "Notoriously destructive on image bytes. LSB dies; F5/jsteg die; only spread-spectrum / DCT-robust survives (rarely, with luck). Send as document instead."
+  },
+  {
+    "id": "transport-whatsapp-document",
+    "name": "WhatsApp document attachment",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2015-01-01", null],
+    "confidence": "community",
+    "aliases": ["whatsapp_document"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-whatsapp-photo"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "Send-as-document preserves bytes. Use this whenever an image payload has to survive WhatsApp."
+  },
+  {
+    "id": "transport-signal-attachment",
+    "name": "Signal attachment",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2014-07-29", null],
+    "confidence": "community",
+    "aliases": ["signal"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-whatsapp-document"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": ["EXIF for images (privacy default)"],
+      "known_recodes": []
+    },
+    "notes": "Signal preserves bytes on documents; strips EXIF from images by design. Steg-friendly except for image metadata."
+  },
+  {
+    "id": "transport-imessage-photo",
+    "name": "iMessage photo attachment",
+    "category": "transport",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2011-10-12", null],
+    "confidence": "community",
+    "aliases": ["imessage_photo"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-imessage-attachment"],
+    "technical_body": {
+      "canonical_layer": "perceptual-approximation",
+      "known_strips": ["EXIF (privacy)"],
+      "known_recodes": ["HEIC transcode on some device pairs"]
+    },
+    "notes": "iOS-to-iOS often preserves; cross-platform (iOS↔Android via SMS/MMS fallback) mangles."
+  },
+  {
+    "id": "transport-imessage-attachment",
+    "name": "iMessage file attachment",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2011-10-12", null],
+    "confidence": "community",
+    "aliases": ["imessage_attachment"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-imessage-photo"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "Document-mode attachments preserve bytes."
+  },
+  {
+    "id": "transport-email-attachment",
+    "name": "Email SMTP attachment",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "primary",
+    "aliases": ["email_attachment", "smtp-attach"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-gmail-inline"],
+    "technical_body": {
+      "canonical_layer": "file-bytes (MIME base64 wrapping is bytewise-reversible)",
+      "known_strips": ["some mail-security gateways strip macros / active content"],
+      "known_recodes": []
+    },
+    "notes": "Attachments are MIME base64. Byte-identical on retrieval for anything the security gateway doesn't touch."
+  },
+  {
+    "id": "transport-gmail-inline",
+    "name": "Gmail inline image (in message body)",
+    "category": "transport",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2004-04-01", null],
+    "confidence": "community",
+    "aliases": ["gmail_inline"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-email-attachment"],
+    "technical_body": {
+      "canonical_layer": "rendered-message-html",
+      "known_strips": ["inline images may be proxied through googleusercontent.com — CDN can strip metadata"],
+      "known_recodes": ["large inline images may be re-encoded for size"]
+    },
+    "notes": "Inline is not the same as attached. Prefer attachment for bit-preserving delivery."
+  },
+  {
+    "id": "transport-github-upload",
+    "name": "GitHub web UI file upload",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2008-04-10", null],
+    "confidence": "primary",
+    "aliases": ["github_upload", "github-web"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-http-raw"],
+    "technical_body": {
+      "canonical_layer": "file-bytes (raw.githubusercontent.com serves the exact bytes)",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "Bytes preserved end-to-end. One of the strongest steg-friendly public transports."
+  },
+  {
+    "id": "transport-http-raw",
+    "name": "Raw HTTP transfer (curl / direct download)",
+    "category": "transport",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["1991-01-01", null],
+    "confidence": "primary",
+    "aliases": ["http_raw", "curl"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-github-upload"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "The baseline. Byte-identical. Everything survives."
+  },
+  {
+    "id": "transport-terminal-stdout",
+    "name": "Terminal stdout + mouse-copy",
+    "category": "transport",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1969-01-01", null],
+    "confidence": "primary",
+    "aliases": ["terminal_stdout", "ssh-copy-paste"],
+    "citations": ["st3gg-field-guide", "st3gg-transport-matrix"],
+    "see_also": ["transport-pbcopy"],
+    "technical_body": {
+      "canonical_layer": "visible-glyphs",
+      "known_strips": ["zero-width chars", "invisible-ink tag chars (in many terminals)", "some combining marks"],
+      "known_recodes": []
+    },
+    "notes": "The user's mouse selection copies glyphs, not bytes. Zero-width / invisibles filtered by many terminals. Pipe through pbcopy / xclip / clip.exe instead."
+  },
+  {
+    "id": "transport-pbcopy",
+    "name": "OS clipboard byte-stream (pbcopy / xclip / clip.exe)",
+    "category": "transport",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2005-01-01", null],
+    "confidence": "primary",
+    "aliases": ["pbcopy", "xclip", "clip.exe"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["transport-terminal-stdout"],
+    "technical_body": {
+      "canonical_layer": "file-bytes",
+      "known_strips": [],
+      "known_recodes": []
+    },
+    "notes": "Preserves bytes end-to-end. The right way to move text stego from terminal to any GUI."
+  }
+]
