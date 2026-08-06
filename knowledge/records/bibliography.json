@@ -1,0 +1,15 @@
+[
+  {
+    "id": "st3gg-repo-scaffold",
+    "name": "M3GA-ST3GG repository — scaffold entry",
+    "category": "bibliography",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "primary",
+    "aliases": ["st3gg-scaffold"],
+    "kind": "repository-doc",
+    "authors": ["AND!XOR"],
+    "title": "M3GA-ST3GG — knowledge base scaffold",
+    "location": "M3GA-ST3GG/knowledge/",
+    "notes": "Placeholder bootstrap citation so the record store can load before the full bibliography lands in the next commit."
+  }
+]
