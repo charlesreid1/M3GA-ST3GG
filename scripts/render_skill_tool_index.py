@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from st3ggmcp.tools import image, jailbreak, meta, network, text, triage  # noqa: E402
+from st3ggmcp.tools import image, jailbreak, knowledge, meta, network, text, triage  # noqa: E402
 
 BEGIN_FENCE = "<!-- BEGIN autogen: tool index -->"
 END_FENCE = "<!-- END autogen: tool index -->"
@@ -44,6 +44,7 @@ FAMILIES: list[tuple[str, str, object]] = [
     ("text", "Text / emoji", text),
     ("network", "Network", network),
     ("jailbreak", "Jailbreak / transforms", jailbreak),
+    ("knowledge", "Knowledge (records + prose corpus)", knowledge),
     ("meta", "Meta / capabilities", meta),
 ]
 

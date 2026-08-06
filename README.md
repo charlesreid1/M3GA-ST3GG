@@ -340,7 +340,7 @@ stegg --json analyze suspect.png --full
 stegg-mcp
 ```
 
-Four docs describe the agent surface. Each has a different audience and a different loading moment — don't conflate them:
+Five docs describe the agent surface. Each has a different audience and a different loading moment — don't conflate them:
 
 | Doc | Purpose | Read by |
 | --- | --- | --- |
@@ -348,6 +348,7 @@ Four docs describe the agent surface. Each has a different audience and a differ
 | [`skills/stegg-cli/SKILL.md`](skills/stegg-cli/SKILL.md) | When-to-fire triggers + invocation recipes for the subprocess CLI | The host's skill picker, before touching the repo |
 | [`skills/stegg-stego/SKILL.md`](skills/stegg-stego/SKILL.md) + [`REFERENCE.md`](skills/stegg-stego/REFERENCE.md) | When-to-fire triggers, tool-selection heuristics, workflow recipes for the MCP server (SKILL.md); exhaustive per-tool spec (REFERENCE.md) | The host's skill picker (SKILL.md); the agent mid-session when it needs argument tables (REFERENCE.md) |
 | [`st3ggmcp/field_guide.md`](st3ggmcp/field_guide.md) | Analyst persona, technique catalog, signal-reading heuristics, transport-survival tables | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
+| [`knowledge/`](knowledge/) (records + prose corpus) | Cited numeric facts (bits/pixel, survival cells, capacity formulas, bibliography) and split-per-topic prose (`README` / `reference` / `walkthrough` / `recognition` / `history`) | An agent that needs a citation-backed answer, fetched on-demand via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg://<topic>/<name>` |
 
 For the full audience-and-when-read matrix, plus the rule about which doc owns what, see [`AGENTS.md#docs-map`](AGENTS.md#docs-map). To make the skills discoverable in Claude Code, follow the symlink recipe in [`AGENTS.md#install-the-skills`](AGENTS.md#install-the-skills).
 
@@ -413,22 +414,81 @@ See [`examples/README.md`](examples/README.md) for the full catalog.
 ```
 ST3GG/
 ├── index.html              # Browser UI (100% client-side)
-├── img_core.py            # Core LSB encoding/decoding engine
+├── img_core.py             # Core LSB encoding/decoding engine
 ├── crypto.py               # AES-256-GCM + XOR encryption
-├── analysis_tools.py       # 20+ detection & analysis functions
+├── analysis_tools.py       # 200+ detection & analysis functions
 ├── cli.py                  # Command-line interface
 ├── webui.py                # Web UI (NiceGUI)
 ├── app.py                  # Core application logic
 ├── transforms_core.py      # Pure text transforms (zalgo, leetspeak, fullwidth)
+├── text_core.py            # 15 text/emoji stego methods
+├── audio_core.py           # WAV LSB, silence-interval, MIDI SysEx
+├── network_core.py         # PCAP-based covert channels
+├── matryoshka_core.py      # Recursive nested-image steg
+├── jailbreak_core.py       # Prompt-injection composers + detectors
 ├── ascii_art.py            # Terminal art & animations
-
-├── test_examples.py        # Test suite (200+ tests)
+├── st3ggmcp/               # HTTP + stdio MCP server package
+│   ├── server.py           #   ASGI app + entry point
+│   ├── records.py          #   Typed-record loader (strict load-time validation)
+│   ├── tools/              #   Per-family tool modules (image / text / triage /
+│   │                       #     network / jailbreak / knowledge / meta)
+│   ├── field_guide.md      #   ST3GG persona + technique catalog
+│   └── TRANSPORT_MATRIX.md #   Human-readable transport survival scoreboard
+├── knowledge/              # Typed KR + prose corpus (see below)
+│   ├── MANIFEST.md
+│   ├── records/            #   *.json — bibliography, techniques, transports,
+│   │                       #     survival, detectors, signatures, myths, ...
+│   └── <topic>/            #   Prose corpus, one idea per file, exposed as
+│                           #     MCP resources at stegg://<topic>/<name>
+├── skills/                 # Agent skill definitions
+│   ├── stegg-cli/SKILL.md
+│   └── stegg-stego/{SKILL,REFERENCE}.md
+├── tests/                  # pytest suite (round-trips, detectors, KR gold-standard Q/A)
 ├── examples/               # 100+ pre-encoded example files
 │   ├── generate_examples.py
 │   └── README.md
 ├── requirements.txt
 └── pyproject.toml
 ```
+
+## ⊰ Knowledge Base ⊱
+
+ST3GG ships a two-layer knowledge base modeled on PHR34CKER5's split-per-topic pattern. Agents connected via the MCP server (or humans reading the repo) get **cited numeric answers** instead of folklore — every technique, transport, detector, and myth is a typed record with a mandatory citation envelope.
+
+### Typed records — `knowledge/records/*.json`
+
+One JSON array per category, each record carrying a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` and the MCP server won't boot.
+
+| File | What it holds |
+| --- | --- |
+| `bibliography.json` | Every source anything else cites (RFCs, papers, repo docs). |
+| `techniques.json` | One record per encode/decode method with numeric `technical_body` (bits/carrier, prefix scheme, capacity formula, stealth class). |
+| `carrier_formats.json` | Format specs: PNG chunk grammar, JPEG DCT structure, WAV RIFF, PCAP frames. |
+| `layers.json` | The five canonical steg layers (bit / coefficient / character / container / semantic). |
+| `transports.json` | Delivery channels with `canonical_layer`, `known_strips[]`, `known_recodes[]`. |
+| `survival.json` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}`, evidence, tested_at. |
+| `detectors.json` | Chi-square, RS, sample-pairs, bit-plane entropy, F5 signature, PVD detector. |
+| `signatures.json` | "If you see X, technique is probably Y" pattern-diagnosis records. |
+| `myths.json` | Explicit false claims (powers `stegg_verify_claim`). |
+
+### Prose corpus — `knowledge/<topic>/`
+
+One directory per topic (`image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`), one idea per markdown file. Each topic starts with `README.md` and may add `reference.md`, `walkthrough.md`, `recognition.md`, `history.md` as the material demands. Every file is auto-exposed as an MCP resource at `stegg://<topic>/<name>`.
+
+### Retrieval tools (MCP)
+
+The `stegg-mcp` server exposes ten tools that read this knowledge base:
+
+- `stegg_lookup_technique` — full technique record + envelope. The "numbers not adjectives" tool.
+- `stegg_verify_survival` — (technique, transport) status + evidence + tested_at + caveat/workaround.
+- `stegg_verify_claim` — grade a natural-language assertion as `false` / `needs_qualification` / `unverified` against `myths.json`.
+- `stegg_explain_pipeline` — ordered list of technique records for a goal (filters by carrier + transport + stealth constraint).
+- `stegg_bibliography` — resolve a citation or list every source.
+- `stegg_cross_reference` — walk a record's `see_also` links.
+- `stegg_search_records` — filter records by `category` / `carrier_family` / `layer` / `transport`.
+- `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore` — enumerate + read + regex-search the prose corpus.
+
+See [`knowledge/MANIFEST.md`](knowledge/MANIFEST.md), [`knowledge/records/README.md`](knowledge/records/README.md), and [`plan-knowledge-base.md`](plan-knowledge-base.md) for the discipline conventions and the tiered fill plan.
 
 ---
 

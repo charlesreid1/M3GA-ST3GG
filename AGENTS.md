@@ -20,7 +20,7 @@ Rule of thumb: `stegg --json` for context hygiene, MCP for inline reasoning.
 
 ## Docs map
 
-Four docs, four audiences. Don't conflate them — a fact should live where its audience will read it, and cross-link the rest.
+Five docs, five audiences. Don't conflate them — a fact should live where its audience will read it, and cross-link the rest.
 
 | Doc | Audience | When read | Discovered via |
 | --- | --- | --- | --- |
@@ -28,14 +28,24 @@ Four docs, four audiences. Don't conflate them — a fact should live where its 
 | `skills/*/SKILL.md` | The MCP host's skill picker, before touching the repo | Skill-selection time, from a global listing | Host's skill dir (`~/.claude/skills/`, plugin skills), matched by `description:` frontmatter |
 | `skills/stegg-stego/REFERENCE.md` | Agent that already selected `stegg-stego` and needs full tool specs | On-demand, when SKILL.md says "see REFERENCE" | Linked from SKILL.md |
 | `st3ggmcp/field_guide.md` | Agent about to analyze a file with the MCP tools | On-demand, fetched mid-turn | MCP resource `stegg://field-guide` |
+| `knowledge/**/*.md` + `knowledge/records/*.json` | Agent that needs a cited number, a technique record, or a transport-survival cell | On-demand, mid-turn, via `stegg_lookup_*` / `stegg_verify_*` / `stegg://<topic>/<name>` | Retrieval tools (`stegg_list_topics`, `stegg_read_lore`, `stegg_lookup_technique`, `stegg_verify_survival`, ...) + MCP resources |
 
-Rule: `AGENTS.md` owns repo layout + install + entry-point framing. `SKILL.md` owns when-to-fire triggers + tool-selection heuristics. `REFERENCE.md` owns per-tool specs. `field_guide.md` owns the analyst persona + technique catalog. Overlap is fine when audiences differ; contradiction is a bug.
+Rule: `AGENTS.md` owns repo layout + install + entry-point framing. `SKILL.md` owns when-to-fire triggers + tool-selection heuristics. `REFERENCE.md` owns per-tool specs. `field_guide.md` owns the analyst persona + technique catalog. The knowledge base owns cited numeric facts (records) and split-per-topic prose. Overlap is fine when audiences differ; contradiction is a bug — when the field guide and a record disagree, the record wins (records are load-time-validated and cited; the field guide is voice).
 
 ## Field guide
 
 `st3ggmcp/field_guide.md` — the ST3GG analyst persona, technique catalog, signal-reading heuristics, verdict semantics, transport-survival tables. Read this before analyzing a suspicious file. Also served as MCP resource `stegg://field-guide`.
 
-`st3ggmcp/TRANSPORT_MATRIX.md` — which techniques survive which delivery channels (Slack, terminal stdout, JPEG re-encode, etc.).
+`st3ggmcp/TRANSPORT_MATRIX.md` — which techniques survive which delivery channels (Slack, terminal stdout, JPEG re-encode, etc.). Companion to `knowledge/records/survival.json` — the matrix is the human-readable scoreboard; `survival.json` is the queryable cell-by-cell record set.
+
+## Knowledge base
+
+`knowledge/` — two-layer corpus modeled on PHR34CKER5's split:
+
+- `knowledge/records/*.json` — typed KR, one file per category (`bibliography`, `techniques`, `carrier_formats`, `layers`, `transports`, `survival`, `detectors`, `signatures`, `myths`). Every record has a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict — empty `citations[]` or an unresolved bibliography id raises `RecordError` and the MCP server won't boot. Loaded by `st3ggmcp/records.py`; served by `st3ggmcp/tools/knowledge.py` as `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_search_records`.
+- `knowledge/<topic>/*.md` — prose corpus, one idea per file (`README.md` orient + optional `reference.md` / `walkthrough.md` / `recognition.md` / `history.md`). Every markdown file is auto-exposed as an MCP resource at `stegg://<topic>/<name>` and searchable via `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore`.
+
+Design + discipline: `knowledge/MANIFEST.md`. Motivation and the tier-by-tier fill order: `plan-knowledge-base.md`.
 
 ## Jailbreak / transforms
 
@@ -55,12 +65,15 @@ Framing, consistent with the field guide: this tooling is for **CTFs, DEF CON ch
 - `webui.py` — optional NiceGUI UI
 - `st3ggmcp/` — HTTP MCP server package
   - `server.py` — ASGI app + entry point
-  - `tools/` — per-family tool modules (`image`, `text`, `triage`, `network`, `jailbreak`, `meta`), each colocating executors with their JSON schemas
+  - `records.py` — typed-record loader with strict load-time validation (empty `citations[]` or unresolved bib id = `RecordError`)
+  - `tools/` — per-family tool modules (`image`, `text`, `triage`, `network`, `jailbreak`, `knowledge`, `meta`), each colocating executors with their JSON schemas
   - `field_guide.md`, `TRANSPORT_MATRIX.md` — persona + delivery-channel notes
+- `knowledge/` — two-layer corpus (typed KR + prose corpus). See "Knowledge base" above.
 - `skills/stegg-cli/`, `skills/stegg-stego/` — agent skill definitions
 - `index.html` — browser Text Lab + F5 JPEG (legacy, frozen)
-- `tests/` — pytest suite (image round-trips, text detectors, cross-language fixtures)
+- `tests/` — pytest suite (image round-trips, text detectors, cross-language fixtures, KR gold-standard Q/A + adversarial traps)
 - `examples/` — pre-encoded fixtures
+- `plan-knowledge-base.md` — motivation + tiered fill plan for the KR
 
 ## Install
 

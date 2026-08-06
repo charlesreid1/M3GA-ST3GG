@@ -1,11 +1,11 @@
 ---
 name: stegg-stego
-description: "ST3GG steganography via HTTP MCP server. Covers image (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB, PNG chunk/EXIF injection, container carving), text and emoji (zero-width, cyrillic_homoglyph, cjk_homoglyph, whitespace, variation, combining, confusable, directional, hangul, mathbold, braille, emoji, skintone, capitalization, invisible_ink), network (PCAP steg + steganalysis), and authorized jailbreak / prompt-injection composers and detectors. Use when analyzing files for hidden content, hiding data in any of those carriers, running triage with SUSPICIOUS/INCONCLUSIVE/CLEAN verdicts, probing what a stegg build supports at runtime, or answering technique-tradeoff and transport-survival questions. Triggers on stegg, steganography, steg, LSB, DCT, F5, JSteg, PVD, hide data, hidden data, steganalysis, triage, zero-width, homoglyph, cyrillic_homoglyph, cjk_homoglyph, PNG chunk, EXIF injection, polyglot, PCAP steg, network steg, prompt injection, jailbreak, Unicode Tag, hidden emoji, capability probe."
+description: "ST3GG steganography via HTTP MCP server. Covers image (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB, PNG chunk/EXIF injection, container carving), text and emoji (zero-width, cyrillic_homoglyph, cjk_homoglyph, whitespace, variation, combining, confusable, directional, hangul, mathbold, braille, emoji, skintone, capitalization, invisible_ink), network (PCAP steg + steganalysis), authorized jailbreak / prompt-injection composers and detectors, and a typed knowledge base (records + prose corpus) for cited technique / survival / bibliography / pipeline lookups. Use when analyzing files for hidden content, hiding data in any of those carriers, running triage with SUSPICIOUS/INCONCLUSIVE/CLEAN verdicts, probing what a stegg build supports at runtime, looking up cited numbers instead of guessing, or answering technique-tradeoff and transport-survival questions. Triggers on stegg, steganography, steg, LSB, DCT, F5, JSteg, PVD, hide data, hidden data, steganalysis, triage, zero-width, homoglyph, cyrillic_homoglyph, cjk_homoglyph, PNG chunk, EXIF injection, polyglot, PCAP steg, network steg, prompt injection, jailbreak, Unicode Tag, hidden emoji, capability probe, lookup technique, verify survival, verify claim, bibliography, pipeline design, knowledge base."
 ---
 
 # ST3GG stego (MCP)
 
-HTTP MCP server exposing 52 steganography tools across six families — **triage**, **image** (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB), **text/emoji** (14 methods), **network** (PCAP), **jailbreak / transforms** (composers + detectors for authorized red-team use), and **meta / capabilities** — plus a persona field guide. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
+HTTP MCP server exposing steganography tools across seven families — **triage**, **image** (LSB, DCT/F5/JSteg, PVD, GIF, APNG, PDF, polyglots, audio-LSB), **text/emoji** (15 methods), **network** (PCAP), **jailbreak / transforms** (composers + detectors for authorized red-team use), **knowledge** (typed KR + prose corpus retrieval), and **meta / capabilities** — plus a persona field guide and a browsable prose corpus at `stegg://<topic>/<name>`. Results come back inline in the LLM context; use `stegg-cli` (subprocess skill) instead when results are large and you don't need to reason over them inline.
 
 ## Server
 
@@ -86,6 +86,19 @@ Streamable HTTP at `http://<host>:8765/mcp` after `pip install -e '.[mcp]' && st
 - `stegg_jailbreak_list` — List available jailbreak templates with metadata (technique class, target models, tags).
 - `stegg_transforms_list` — List registered text transforms from transforms_core — the set of names accepted by the `obfuscation` parameter on the jailbreak compose_text / compose_unicode_tag tools.
 
+### Knowledge (records + prose corpus)
+
+- `stegg_bibliography` — Resolve a bibliography entry by id, or list every source when called without arguments.
+- `stegg_cross_reference` — Traverse a record's see_also links, returning the linked records' id/name/category.
+- `stegg_explain_pipeline` — Return an ordered list of technique records that fit a goal.
+- `stegg_list_topics` — List every topic in the prose corpus (`knowledge/<topic>/`) and the markdown files under each.
+- `stegg_lookup_technique` — Look up a technique record by id, name, or alias.
+- `stegg_read_lore` — Read a single prose file from the corpus.
+- `stegg_search_lore` — Search the prose corpus for a term (case-insensitive substring / regex).
+- `stegg_search_records` — Search the typed records with category / carrier_family / layer / transport filters.
+- `stegg_verify_claim` — Grade a natural-language claim as `false` / `needs_qualification` / `unverified` against myths.json.
+- `stegg_verify_survival` — Given a (technique, transport) pair, return the survival status (✅ / ❌ / ⚠ / ❓), the evidence pointer, tested_at date, and any caveats or workarounds.
+
 ### Meta / capabilities
 
 - `stegg_capabilities` — Report what this stegg install can actually do right now: which optional Python packages are importable (jpeglib, piexif, pyexiv2, pikepdf, pypdf, apng, cryptography), which external binaries are on PATH (exiftool, steghide, outguess, ffmpeg, qpdf), and which technique keys — the same keys the transport-survivability matrix uses — are usable, missing, or promotable. **Call this once at session start** so ST3GG never recommends a technique the host environment can't run; every 'missing' technique carries an install_hint.
@@ -107,11 +120,14 @@ The autogen block above is the menu; this section is the decision guide. Reach f
 
 **Jailbreak / transforms (`stegg_jailbreak_*` / `stegg_transforms_list`)** — composers and detectors for authorized red-team ops, CTFs, DEF CON challenges, hardware badges, detection-tuning, and forensic research (see `AGENTS.md` for the parent framing). Composers stitch obfuscation pipelines from `transforms_core` (zalgo, fullwidth, leetspeak) with text stego or image LSB to produce end-to-end prompt-injection payloads. The detection sweep (`stegg_jailbreak_detect`) is the blue-team side of the same catalog — scan filenames, PNG chunks, LSB pixels, trailing bytes, and Unicode obfuscation in one call.
 
-**Text / emoji** — 14 methods spanning invisible (zero-width, homoglyph, variation selectors, whitespace) and visibly-perturbed (braille, emoji, skintone). `stegg_text_steg` / `stegg_text_steg_message` run the full detector suite; `stegg_text_encode` / `stegg_text_decode` operate on a named method. See `stegg://field-guide` for per-method transport-survival tables.
+**Text / emoji** — 15 methods spanning invisible (zero-width, homoglyph, variation selectors, whitespace) and visibly-perturbed (braille, emoji, skintone). `stegg_text_steg` / `stegg_text_steg_message` run the full detector suite; `stegg_text_encode` / `stegg_text_decode` operate on a named method. See `stegg://field-guide` for per-method transport-survival tables.
 
-## Resource
+**Knowledge (`stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_search_records` / `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore`)** — the typed KR under `knowledge/records/*.json` and the prose corpus under `knowledge/<topic>/`. Reach for these **before answering technique-tradeoff, capacity, transport-survival, or "does X survive Y" questions from memory**. Every record carries an envelope (`citations`, `era_bounds`, `carrier_family`, `confidence`) that lets the model return cited answers instead of folklore. `stegg_verify_claim` grades natural-language assertions against `myths.json` (returns `false` / `needs_qualification` / `unverified`); `stegg_explain_pipeline` returns an ordered list of technique records for a stated goal (carrier + transport + stealth constraint). `stegg_search_records` scopes typed records; `stegg_search_lore` greps the prose corpus.
+
+## Resources
 
 - `stegg://field-guide` — persona + technique catalog + signal-reading heuristics + verdict semantics + response format. **Read this before analyzing a file.**
+- `stegg://<topic>/<name>` — prose corpus under `knowledge/<topic>/`. Every markdown file in the corpus is auto-exposed as an MCP resource. List with `stegg_list_topics`; read with `stegg_read_lore` (same content as the resource).
 
 ## Key constraints
 
@@ -153,3 +169,13 @@ The autogen block above is the menu; this section is the decision guide. Reach f
 **Hide data in text**
 1. `stegg_text_capacity` — pre-flight the cover.
 2. `stegg_text_encode` with a method matched to the transport (see `stegg://field-guide` for transport survival).
+
+**Answer a "how does X work / how many bytes / does X survive Y" question with citations**
+1. `stegg_lookup_technique(name)` for the technique's `technical_body` (bits/carrier, prefix scheme, capacity formula, stealth class) + citations.
+2. `stegg_verify_survival(technique, transport)` for the (technique, transport) cell — status, evidence, tested_at, caveat/workaround.
+3. `stegg_bibliography(cite_id)` to resolve a citation, or `stegg_bibliography()` to list every source.
+
+**Design a pipeline for a stated goal ("survive Slack paste, 800B, prose-looking")**
+1. `stegg_explain_pipeline(goal, carrier=?, transport=?, constraint=?)` returns an ordered list of technique records that pass every filter.
+2. For each step, `stegg_cross_reference(record_id)` to walk `see_also` links.
+3. `stegg_verify_claim(text)` to grade any assertion the user (or the pipeline output) makes against `myths.json`.
