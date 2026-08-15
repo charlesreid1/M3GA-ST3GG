@@ -211,6 +211,44 @@ _ADVERSARIAL_TRAPS = [
     ("If every alpha byte's LSB is 1 that's encrypted payload.",
      "false", "alpha-all-ones-encrypted"),
 
+    ("PCM sample LSB survives an MP3 re-encode.",
+     "false", "audio-LSB-vs-MP3"),
+    ("Audio LSB payload will safely round-trip through Opus.",
+     "false", "audio-LSB-vs-Opus paraphrase"),
+
+    ("Slack recodes PNG pixels and strips IDAT on upload.",
+     "false", "slack-strips-pixels"),
+
+    ("EXIF survives everywhere across every messenger.",
+     "false", "metadata-survives-anywhere"),
+
+    ("Variation selectors survive terminal mouse-copy.",
+     "false", "VS-terminal"),
+
+    ("Polyglot files decode regardless of order of the containers.",
+     "needs_qualification", "polyglot-order"),
+
+    ("Any generic JPEG library can decode an F5 payload.",
+     "false", "F5-any-decoder"),
+
+    ("Chi-square attacks reliably detect OutGuess.",
+     "false", "chi-square-vs-OutGuess"),
+
+    ("Encrypting the cover payload makes the steg channel undetectable.",
+     "false", "encryption-hides-steg"),
+
+    ("Unicode tag characters pass through every input sanitizer safely.",
+     "false", "tag-block sanitizers"),
+
+    ("iMessage always delivers original bytes for photos.",
+     "needs_qualification", "iMessage-original-bytes"),
+
+    ("GitHub strips EXIF metadata from uploaded images.",
+     "false", "github-strips-exif"),
+
+    ("PVD survives JPEG re-encoding through Slack.",
+     "false", "PVD-vs-JPEG"),
+
     # --- truthful CONTROLS (must NOT match any myth) ---
     # Real technical facts. `unverified` is the honest answer here.
     ("The sky is blue.",
@@ -311,9 +349,9 @@ def test_every_myth_has_verdict_and_correct_form(store):
 
 
 def test_trap_catalog_size_meets_target(store):
-    """The plan targets 20 seeded myths; the pass in this repo targets ~8+.
-    Failing this means the catalog shrank — investigate before merging."""
-    assert len(store.in_category("myth")) >= 8
+    """The plan targets 20 seeded myths. Failing this means the catalog
+    shrank — investigate before merging."""
+    assert len(store.in_category("myth")) >= 20
 
 
 # --- integrity: silent rot detection ------------------------------------------
