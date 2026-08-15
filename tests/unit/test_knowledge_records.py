@@ -33,6 +33,9 @@ def test_store_loads_all_categories(store: records.RecordStore) -> None:
         "detector",
         "signature",
         "myth",
+        "capacity_model",
+        "external_tool",
+        "ctf_genre",
     } <= categories
 
 
