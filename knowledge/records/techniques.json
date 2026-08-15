@@ -694,7 +694,7 @@
     "confidence": "primary",
     "aliases": ["network-steg", "pcap-covert"],
     "citations": ["st3gg-field-guide"],
-    "see_also": ["image-trailing-bytes"],
+    "see_also": ["image-trailing-bytes", "network-ip-ttl", "network-ip-id", "network-tcp-isn", "network-tcp-timestamp", "network-tcp-window", "network-tcp-urgent", "network-icmp-payload", "network-dns-label", "network-dns-txt", "network-http-header", "network-covert-timing"],
     "technical_body": {
       "code_module": "network_core (StegoMethod enum)",
       "methods": ["IP_TTL (1 B/pkt)", "IP_ID (2 B/pkt)", "TCP_ISN (4 B/pkt)", "TCP_TIMESTAMP (4 B/pkt)", "TCP_WINDOW (2 B/pkt)", "TCP_URGENT (2 B/pkt)", "ICMP_PAYLOAD (32 B/pkt)", "DNS_LABEL (48 B/pkt)", "DNS_TXT (255 B/pkt)", "HTTP_HEADER (single-packet unlimited)", "COVERT_TIMING (1 bit/pkt)"],
@@ -703,6 +703,501 @@
       "stealth_class": "varies by method — timing is stealthiest, ICMP_PAYLOAD loudest",
       "requires_extras": ["pcap read (scapy)"]
     },
-    "notes": "One record family covering every StegoMethod in network_core. See individual method rows in survival.json for per-transport behavior when we get there."
+    "notes": "Umbrella record covering every StegoMethod in network_core. Per-method detail lives in the network-* rows below; per-transport behavior lives in survival.json."
+  },
+  {
+    "id": "network-ip-ttl",
+    "name": "IP TTL field covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["ip_ttl", "ttl-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel", "network-ip-id"],
+    "technical_body": {
+      "code_module": "network_core._encode_ip_ttl / _decode_ip_ttl",
+      "wire_field": "IPv4 TTL (8 bits per packet)",
+      "capacity_formula": "1 byte per packet — payload spread across TTLs",
+      "header_format": "NETH-framed",
+      "stealth_class": "invisible per packet (TTL varies naturally); statistically obvious in bulk (real TTL clusters at 64/128/255)",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "One byte per packet. Real-world TTL distributions cluster tightly at OS defaults (64 Linux, 128 Windows, 255 BSD/router); a uniform spread across [0..255] is the fingerprint."
+  },
+  {
+    "id": "network-ip-id",
+    "name": "IP identification field covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["ip_id", "ipid", "ipid-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel", "network-ip-ttl"],
+    "technical_body": {
+      "code_module": "network_core._encode_ip_id / _decode_ip_id",
+      "wire_field": "IPv4 IP ID (16 bits per packet)",
+      "capacity_formula": "2 bytes per packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "invisible per packet (IP ID is host-chosen and often random on modern OSes); statistically obvious when strictly monotonic entropy appears in a supposedly-random stream",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "Two bytes per packet in the IP identification field. Historically monotonic on old stacks; modern Linux/Windows randomize it, so a covert stream can blend in — until a statistical test notices the payload's non-uniform entropy."
+  },
+  {
+    "id": "network-tcp-isn",
+    "name": "TCP initial-sequence-number covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["tcp_isn", "isn-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_tcp_isn / _decode_tcp_isn",
+      "wire_field": "TCP ISN (32 bits per SYN)",
+      "capacity_formula": "4 bytes per SYN packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "invisible if ISN entropy matches host (modern stacks use RFC 6528 hash-based ISNs — high entropy)",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "4 bytes per SYN. Only works on TCP handshake initiators. Statistically obvious if the receiver notices the ISN is not a valid RFC 6528 hash of (src, dst, ports, secret)."
+  },
+  {
+    "id": "network-tcp-timestamp",
+    "name": "TCP timestamp option covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1992-01-01", null],
+    "confidence": "primary",
+    "aliases": ["tcp_timestamp", "tcp-ts-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel", "network-tcp-isn"],
+    "technical_body": {
+      "code_module": "network_core._encode_tcp_timestamp / _decode_tcp_timestamp",
+      "wire_field": "TCP Timestamp Option TSval (32 bits per packet)",
+      "capacity_formula": "4 bytes per packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "invisible if TSval delta plausibly matches host clock rate (typically 1000 ticks/sec)",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "Overwrites the TCP timestamp option's TSval. Detection notices timestamps that don't advance monotonically with wall-clock or that fail the sender's clock-rate profile."
+  },
+  {
+    "id": "network-tcp-window",
+    "name": "TCP window field covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["tcp_window", "tcp-window-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_tcp_window / _decode_tcp_window",
+      "wire_field": "TCP Window Size (16 bits per packet)",
+      "capacity_formula": "2 bytes per packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "invisible in isolation; statistically obvious in bulk (real windows advertise a handful of MSS-multiple values, not the full 16-bit range)",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "Encodes payload into the advertised window size. Real hosts use a small set of window scales; a wide spread is the fingerprint. Also interferes with congestion control if used on real connections."
+  },
+  {
+    "id": "network-tcp-urgent",
+    "name": "TCP urgent pointer covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["tcp_urgent", "tcp-urg-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_tcp_urgent / _decode_tcp_urgent",
+      "wire_field": "TCP Urgent Pointer (16 bits per packet with URG flag)",
+      "capacity_formula": "2 bytes per packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "visibly-perturbed — real traffic almost never sets URG=1; every payload packet is suspicious on its own",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "URG=1 with non-zero urgent pointer is vanishingly rare in real traffic. Anyone running Suricata / Zeek / plain packet counts notices immediately. Include for completeness, not stealth."
+  },
+  {
+    "id": "network-icmp-payload",
+    "name": "ICMP echo payload covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["icmp_payload", "icmp-tunnel", "loki-style"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_icmp_payload / _decode_icmp_payload",
+      "wire_field": "ICMP Echo Request/Reply payload (variable, ~32 B/pkt in this impl)",
+      "capacity_formula": "~32 bytes per packet",
+      "header_format": "NETH-framed",
+      "stealth_class": "visibly-perturbed — the LOKI2 lineage means every DFIR toolkit checks ICMP payload entropy",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "The classic Loki/Loki2 channel. Highest per-packet capacity of the network methods and lowest stealth — ICMP payload with high-entropy bytes rings every alarm. Blocked by most enterprise egress filters."
+  },
+  {
+    "id": "network-dns-label",
+    "name": "DNS QNAME label covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["dns_label", "dns-tunneling-qname", "iodine-style"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel", "network-dns-txt"],
+    "technical_body": {
+      "code_module": "network_core._encode_dns_label / _decode_dns_label",
+      "wire_field": "DNS QNAME labels (base32-encoded)",
+      "capacity_formula": "~48 raw bytes per QNAME (single-label 63-char limit / base32 blowup)",
+      "header_format": "NETH-framed, base32-encoded per label",
+      "stealth_class": "invisible in noisy DNS; obvious to any resolver watching for oversized / base32-shaped labels",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "The iodine / dnscat2 lineage. Excellent for egress bypass because DNS is almost always allowed outbound. Modern DNS-anomaly detectors (Splunk / Zeek dns.log) flag long labels and high-entropy strings."
+  },
+  {
+    "id": "network-dns-txt",
+    "name": "DNS TXT record covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["dns_txt", "dns-txt-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel", "network-dns-label"],
+    "technical_body": {
+      "code_module": "network_core._encode_dns_txt / _decode_dns_txt",
+      "wire_field": "DNS TXT record RDATA (base64)",
+      "capacity_formula": "up to 255 bytes per TXT string; multi-string records extend further",
+      "header_format": "NETH-framed, base64-encoded",
+      "stealth_class": "invisible per response (TXT records legitimately carry SPF / DKIM / TXT-verification base64 blobs); statistically obvious in query volume",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "TXT records are already a Swiss army knife (SPF, DKIM, DMARC, domain-verification). A covert stream blends unless the domain isn't expected to serve TXT."
+  },
+  {
+    "id": "network-http-header",
+    "name": "HTTP custom-header covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["http_header", "x-header-covert"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_http_header / _decode_http_header",
+      "wire_field": "custom X-* HTTP headers (hex-encoded payload)",
+      "capacity_formula": "single-packet unlimited (bounded only by request/response header size limits)",
+      "header_format": "NETH-framed, hex-encoded",
+      "stealth_class": "invisible if the header name mimics a real vendor prefix (X-Request-Id, X-Amz-*, X-Datadog-*); obvious with unfamiliar X-* names",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "Single-packet high-capacity smuggle inside custom HTTP headers. Proxies and WAFs sometimes strip unknown X-* headers; TLS-terminating egress inspects them."
+  },
+  {
+    "id": "network-covert-timing",
+    "name": "Inter-packet timing covert channel",
+    "category": "technique",
+    "carrier_family": "network",
+    "layer": "semantic",
+    "era_bounds": ["1987-01-01", null],
+    "confidence": "primary",
+    "aliases": ["covert_timing", "timing-channel"],
+    "citations": ["anderson-petitcolas-1998-survey", "st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "code_module": "network_core._encode_covert_timing / _decode_covert_timing",
+      "wire_field": "inter-packet delay",
+      "capacity_formula": "1 bit per packet",
+      "header_format": "NETH-framed at bit-level",
+      "stealth_class": "invisible in the wire content; detected only by inter-arrival-time analysis (Cabuk/Brodley 2004 style)",
+      "requires_extras": ["scapy"]
+    },
+    "notes": "Bit rate depends on packet cadence, not link speed. Beats content-inspecting DPI entirely — nothing about the packet bytes is anomalous. Vulnerable to jitter-analysis detectors."
+  },
+  {
+    "id": "image-outguess",
+    "name": "OutGuess (statistical-preserving JPEG steg)",
+    "category": "technique",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-08-01", null],
+    "confidence": "primary",
+    "aliases": ["outguess"],
+    "citations": ["provos-2001-outguess", "westfeld-pfitzmann-1999-chi2"],
+    "see_also": ["image-f5", "image-jsteg", "image-dct"],
+    "technical_body": {
+      "code_module": "external — outguess CLI (not in this repo's img_core)",
+      "block_size": 8,
+      "capacity_formula": "roughly |usable_nonzero_AC_coefs| / 2 bits (half go to statistical-correction)",
+      "header_format": "OutGuess-specific header",
+      "stealth_class": "invisible against chi-square (that was the design goal); detectable by calibration-based / blockiness attacks",
+      "requires_extras": ["outguess binary"]
+    },
+    "notes": "First embedding pass hides the payload; second pass adjusts other coefficients to restore the original DCT histogram, neutering chi-square. Superseded academically by S-UNIWARD, but still the reference 'statistical-preserving' JPEG steg."
+  },
+  {
+    "id": "audio-echo-hiding",
+    "name": "Echo hiding (audio)",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["echo-hiding"],
+    "citations": ["anderson-petitcolas-1998-survey"],
+    "see_also": ["audio-lsb", "audio-phase-coding"],
+    "technical_body": {
+      "wire_field": "single or paired echoes at short delay (~1 ms) with amplitude below perceptual threshold",
+      "capacity_formula": "1 bit per audio segment (~500 ms segments typical)",
+      "header_format": "delimiter-based",
+      "stealth_class": "invisible under casual listening; detectable by cepstral analysis",
+      "requires_extras": ["signal processing (numpy / scipy)"]
+    },
+    "notes": "Payload encoded as short delay between original and echo. Robust to modest amplification / bandpass; survives some lossy codecs at low bitrate cost. Not implemented in this repo; documented for completeness."
+  },
+  {
+    "id": "audio-phase-coding",
+    "name": "Phase coding (audio)",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["phase-coding"],
+    "citations": ["anderson-petitcolas-1998-survey"],
+    "see_also": ["audio-lsb", "audio-echo-hiding", "audio-spread-spectrum"],
+    "technical_body": {
+      "wire_field": "phase spectrum of the first audio segment",
+      "capacity_formula": "bits ≈ N_freq_bins / 2 for one anchor segment",
+      "header_format": "anchor-segment implicit",
+      "stealth_class": "invisible (human ear insensitive to absolute phase); detectable via inter-segment phase-difference analysis",
+      "requires_extras": ["FFT (numpy)"]
+    },
+    "notes": "Modifies the phase of the first audio block, then adjusts subsequent blocks to preserve relative phase. Perceptually inaudible; robust against small time-domain distortions. Not implemented in this repo."
+  },
+  {
+    "id": "audio-spread-spectrum",
+    "name": "Spread-spectrum audio steg",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["spread-spectrum", "direct-sequence-audio"],
+    "citations": ["anderson-petitcolas-1998-survey", "kessler-primer"],
+    "see_also": ["audio-lsb", "audio-echo-hiding"],
+    "technical_body": {
+      "wire_field": "pseudo-random-noise (PRN) sequence added to cover at low amplitude",
+      "capacity_formula": "chip_rate / spreading_factor bits per second",
+      "header_format": "PRN sequence known to both endpoints",
+      "stealth_class": "invisible unless the PRN is known; the go-to method for robust audio watermarking",
+      "requires_extras": ["signal processing"]
+    },
+    "notes": "Audio analog of DSSS radio: payload times a PRN, added at low amplitude to the cover. Highest robustness of any audio-steg family; the historical basis for commercial watermarking. Requires shared PRN."
+  },
+  {
+    "id": "audio-spectrogram",
+    "name": "Spectrogram-domain image hiding (Aphex Twin style)",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["spectrogram-hide", "spectro-image"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["audio-lsb", "ctf-spectrogram-hide"],
+    "technical_body": {
+      "wire_field": "STFT magnitude spectrogram bins",
+      "capacity_formula": "one 'pixel' of the hidden image per (time_bin, freq_bin) cell",
+      "header_format": "image is visible when the spectrogram is rendered",
+      "stealth_class": "visibly-perturbed once anyone opens a spectrogram viewer; invisible if only PCM samples are inspected",
+      "requires_extras": ["FFT / spectrogram (numpy, matplotlib, sox)"]
+    },
+    "notes": "The Aphex Twin trick (Windowlicker, ΔMi-1 = -αΣn=1NDi[n]). Draw a picture in the frequency domain, IFFT back to audio. A CTF staple; audible as a harsh chirp but visible in Sonic Visualiser / Audacity spectrogram."
+  },
+  {
+    "id": "audio-silence-interval",
+    "name": "Silence-interval steg (audio)",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["silence-interval", "gap-timing"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["audio-lsb"],
+    "technical_body": {
+      "wire_field": "duration of silent gaps between spoken/audio segments",
+      "capacity_formula": "1 bit per silent gap (quantized to short vs long)",
+      "header_format": "delimiter-based",
+      "stealth_class": "invisible under casual listening; obvious if the same source is available for reference",
+      "requires_extras": ["voice-activity detection"]
+    },
+    "notes": "Encodes bits into the length of silences (short = 0, long = 1). Especially handy over telephone / VoIP where silence-suppression codecs are already re-timing gaps. Rare in modern practice."
+  },
+  {
+    "id": "audio-midi-sysex",
+    "name": "MIDI SysEx steg",
+    "category": "technique",
+    "carrier_family": "audio",
+    "layer": "container",
+    "era_bounds": ["1983-01-01", null],
+    "confidence": "primary",
+    "aliases": ["midi-sysex", "sysex-payload"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["network-covert-channel"],
+    "technical_body": {
+      "wire_field": "MIDI System Exclusive (0xF0 .. 0xF7) messages, 7-bit-per-byte payload",
+      "capacity_formula": "arbitrary — a SysEx can carry a full payload block",
+      "header_format": "manufacturer ID + payload bytes + 0xF7 EOX",
+      "stealth_class": "invisible to normal MIDI playback (players ignore unknown SysEx); visible to a hex dump",
+      "requires_extras": ["MIDI parser"]
+    },
+    "notes": "MIDI files carry System Exclusive messages that most players ignore. A canonical container-layer smuggle; requires a MIDI-file cover. Not implemented in this repo."
+  },
+  {
+    "id": "document-pdf-post-eof",
+    "name": "PDF post-%%EOF trailer bytes",
+    "category": "technique",
+    "carrier_family": "document",
+    "layer": "container",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "primary",
+    "aliases": ["pdf-post-eof", "pdf-trailer-append"],
+    "citations": ["iso-32000-pdf"],
+    "see_also": ["image-trailing-bytes", "document-zip-comment"],
+    "technical_body": {
+      "wire_field": "bytes after the last %%EOF marker",
+      "capacity_formula": "unbounded",
+      "header_format": "raw appended bytes; PDF readers scan for the LAST %%EOF and ignore trailing garbage",
+      "stealth_class": "visibly-perturbed against pdfid / peepdf; invisible to normal readers",
+      "requires_extras": []
+    },
+    "notes": "PDFs terminate at %%EOF; readers seek from EOF backwards to find the last one. Anything after the final %%EOF is unreachable via normal parsing. Frequent in CTFs; strip with qpdf --linearize or pdftk output."
+  },
+  {
+    "id": "document-zip-comment",
+    "name": "ZIP archive comment / slack space steg",
+    "category": "technique",
+    "carrier_family": "document",
+    "layer": "container",
+    "era_bounds": ["1989-01-01", null],
+    "confidence": "primary",
+    "aliases": ["zip-comment", "zip-slack"],
+    "citations": ["albertini-polyglots"],
+    "see_also": ["image-polyglot", "document-pdf-post-eof"],
+    "technical_body": {
+      "wire_field": "ZIP archive-level comment (up to 65535 bytes) + inter-entry slack space + EOCD comment",
+      "capacity_formula": "up to 65 KB per comment + arbitrary slack",
+      "header_format": "EOCD comment length field",
+      "stealth_class": "visibly-perturbed against zipinfo / unzip -Z; invisible to `unzip file.zip`",
+      "requires_extras": []
+    },
+    "notes": "ZIP scans from END for the EOCD (End of Central Directory). Bytes between local file headers and the central directory, plus the archive-level comment, are unaddressed by normal extraction. Foundation of many polyglots."
+  },
+  {
+    "id": "document-sqlite-slack",
+    "name": "SQLite unallocated-page / journal slack",
+    "category": "technique",
+    "carrier_family": "document",
+    "layer": "container",
+    "era_bounds": ["2004-01-01", null],
+    "confidence": "primary",
+    "aliases": ["sqlite-slack", "sqlite-freelist"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["document-pdf-post-eof"],
+    "technical_body": {
+      "wire_field": "unallocated pages in the SQLite freelist, rollback-journal / WAL leftover bytes",
+      "capacity_formula": "up to (freelist_pages + wal_frames) × page_size",
+      "header_format": "raw byte scatter across pages",
+      "stealth_class": "invisible to SQL queries; visible to `strings` / any forensic tool that walks page structure",
+      "requires_extras": ["SQLite file parser"]
+    },
+    "notes": "SQLite databases keep deleted-row content on freelist pages until VACUUM. A steg author can pre-allocate pages, delete the rows, and leave the content behind for a receiver who reads the raw file."
+  },
+  {
+    "id": "compose-text-jailbreak",
+    "name": "compose_text_jailbreak (multi-technique composer)",
+    "category": "technique",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["2024-06-01", null],
+    "confidence": "primary",
+    "aliases": ["compose_text_jailbreak", "text-jailbreak-composer"],
+    "citations": ["greenberg-2024-tag-injection", "st3gg-field-guide"],
+    "see_also": ["text-zero-width", "text-invisible-ink", "compose-unicode-tag-jailbreak"],
+    "technical_body": {
+      "code_module": "jailbreak_core.compose_text_jailbreak",
+      "component_techniques": ["text-cyrillic-homoglyph", "text-zero-width", "text-invisible-ink", "text-capitalization"],
+      "capacity_formula": "sum of chosen component capacities minus per-component header",
+      "header_format": "per-component ST3GG framing; the composer picks a stack based on target model",
+      "stealth_class": "prose-like → invisible depending on component selection",
+      "requires_extras": []
+    },
+    "notes": "Composed pipeline that stacks text-layer techniques for prompt-injection payloads. See jailbreak_core.py for the template registry; each template names an ordered technique stack."
+  },
+  {
+    "id": "compose-unicode-tag-jailbreak",
+    "name": "compose_unicode_tag_jailbreak",
+    "category": "technique",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2024-01-01", null],
+    "confidence": "primary",
+    "aliases": ["compose_unicode_tag_jailbreak", "tag-jailbreak-composer"],
+    "citations": ["unicode-tag-block", "greenberg-2024-tag-injection"],
+    "see_also": ["text-invisible-ink", "emoji-tag-sequence", "compose-text-jailbreak"],
+    "technical_body": {
+      "code_module": "jailbreak_core.compose_unicode_tag_jailbreak",
+      "component_techniques": ["text-invisible-ink"],
+      "capacity_formula": "1 tag codepoint per payload byte + framing",
+      "header_format": "start tag (U+E0000) + ASCII-shadow payload + cancel tag (U+E007F)",
+      "stealth_class": "invisible in raw text; increasingly filtered by 2025-2026 sanitizers",
+      "requires_extras": []
+    },
+    "notes": "The 2024 tag-injection attack packaged as a composer. Renders as nothing in a prompt but arrives as full ASCII to the model. Vendor mitigations landed through 2025-2026; test against each target."
+  },
+  {
+    "id": "compose-image-jailbreak",
+    "name": "compose_image_jailbreak (chunk + LSB + tag composer)",
+    "category": "technique",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2024-06-01", null],
+    "confidence": "primary",
+    "aliases": ["compose_image_jailbreak", "image-jailbreak-composer"],
+    "citations": ["greenberg-2024-tag-injection", "rfc-2083-png"],
+    "see_also": ["image-lsb", "image-png-text-chunk", "text-invisible-ink"],
+    "technical_body": {
+      "code_module": "jailbreak_core.compose_image_jailbreak",
+      "component_techniques": ["image-lsb", "image-png-text-chunk", "text-invisible-ink"],
+      "capacity_formula": "image LSB capacity + sum of chunk-body sizes",
+      "header_format": "ST3GG v3 for LSB, PNG chunk framing for chunk payload, tag framing for text-in-chunk",
+      "stealth_class": "invisible per component; visibly-perturbed to any tool that walks every layer",
+      "requires_extras": []
+    },
+    "notes": "Multi-layer image jailbreak: prompt-injection text in PNG chunks, cover image with LSB payload, filename with unicode-tag payload. See jailbreak_core.compose_image_jailbreak for the specific stack."
   }
 ]
