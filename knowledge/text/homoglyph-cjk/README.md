@@ -45,8 +45,10 @@ capacity formula shape, same failure mode.
 ## Where it survives
 
 - Plain UTF-8 pipelines: chat, code, HTTP raw, git commits.
-- Slack paste ([[sv-cjk-slack-paste]]), Slack snippet
-  ([[sv-cjk-slack-snippet]]) — see [[transport-slack-paste]].
+- Slack paste ([[sv-cjk-slack-paste]]) — see
+  [[transport-slack-paste]]. Slack snippet not yet probed for this
+  technique; expect the same behavior as other text steg on the
+  snippet-raw-bytes path.
 - Rich-text UIs that don't NFKC input (which is most).
 
 ## Detection
