@@ -9,13 +9,23 @@ Two-layer corpus, modeled directly on PHR34CKER5's split. See
   `technical_body`). Every citation must resolve into `bibliography.json`
   or startup fails. This is what the `stegg_lookup_*` / `stegg_verify_*`
   tools read.
-- **Topic directories** (`image/`, `text/`, `emoji/`, `audio/`,
-  `network/`, `document/`, `detection/`, `transport/`, `crypto/`,
-  `ctf/`, `history/`, `glossary/`) — prose corpus. One idea per file.
-  Each topic starts with `README.md` (orient) and may add
-  `reference.md`, `walkthrough.md`, `recognition.md`, and `history.md`
-  as the material demands. Every file is exposed as an MCP resource at
-  `stegg://<topic>/<name>`.
+- **Topic directories** — prose corpus. One idea per file. Each topic
+  starts with `README.md` (orient) and can drill down with per-technique
+  subdirectories that carry a `README` + `reference` + `walkthrough` +
+  `recognition` split (e.g. `image/lsb/reference.md`,
+  `text/zero-width/walkthrough.md`).
+
+  As of this doc, topic READMEs live under `image/`, `text/`, `emoji/`,
+  `audio/`, `network/`, `document/`, `detection/`, `transport/`,
+  `crypto/`, `ctf/`, `history/`, and `glossary/`. Per-technique deep
+  splits exist under `image/lsb/`, `image/f5/`, `text/zero-width/`,
+  and `text/homoglyph-cyrillic/`; every other technique named in the
+  plan has an orient README under its topic dir.
+
+  Every markdown file is exposed as an MCP resource at
+  `stegg://<topic>/<name>`. The walker is depth-agnostic: subdirectory
+  files land at `stegg://<topic>/<subtopic>/<file>` (name segment can
+  contain slashes).
 
 ## Discipline
 
@@ -30,6 +40,13 @@ Two-layer corpus, modeled directly on PHR34CKER5's split. See
   the four questions the assistant asks: README → what, reference →
   params, walkthrough → what does it look like end-to-end, recognition
   → is *this* an example.
+
+## Known unknowns
+
+`known-unknowns.md` at this directory's root enumerates every claim
+ST3GG acts on that isn't yet tied to a primary source or a first-party
+measurement. Read it before adding a record whose provenance is thin —
+you may already know the fix.
 
 ## Adding a record
 
