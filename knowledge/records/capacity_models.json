@@ -1,0 +1,284 @@
+[
+  {
+    "id": "cap-image-lsb",
+    "name": "Image LSB capacity",
+    "category": "capacity_model",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["1994-01-01", null],
+    "confidence": "primary",
+    "aliases": ["lsb-capacity", "png-lsb-capacity"],
+    "citations": ["st3gg-v3-header", "kessler-primer"],
+    "see_also": ["image-lsb"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "formula": "capacity_bytes = floor(W * H * len(channels) * bits_per_channel / 8) - header_overhead",
+      "variables": {
+        "W": "image width in pixels",
+        "H": "image height in pixels",
+        "channels": "subset of R/G/B/A (1 to 4 channels)",
+        "bits_per_channel": "1 to 8; 1 or 2 are stealth",
+        "header_overhead": "ST3GG v3 header (~48 bytes) + optional 4-byte length prefix + AES-GCM 16-byte tag if encrypted"
+      },
+      "worked_example": "1920×1080 RGB @ 1 bpc → 1920*1080*3/8 = 777,600 bytes raw; ~777,552 usable after header.",
+      "notes": "Doubling bits_per_channel doubles capacity but increases statistical detectability (chi-square rate grows super-linearly)."
+    }
+  },
+  {
+    "id": "cap-image-pvd",
+    "name": "Pixel Value Differencing capacity",
+    "category": "capacity_model",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2003-01-01", null],
+    "confidence": "primary",
+    "aliases": ["pvd-capacity"],
+    "citations": ["anderson-petitcolas-1998-survey"],
+    "see_also": ["image-pvd"],
+    "technical_body": {
+      "technique_id": "image-pvd",
+      "formula": "capacity_bits = sum over adjacent pixel pairs (i, j) of floor(log2(range_width(|p_i - p_j|)))",
+      "variables": {
+        "range_width": "Wu–Tsai partitions the 0-255 difference space into sub-ranges (typically [0,7], [8,15], [16,31], [32,63], [64,127], [128,255]); wider ranges carry more bits",
+        "adjacent": "horizontal or vertical neighboring pixels in the traversal order"
+      },
+      "worked_example": "Uniform smooth image (all diffs in [0,7]) → 3 bits per pair. Edge-heavy image (diffs in [128,255]) → 7 bits per pair.",
+      "notes": "Data-dependent capacity; edge-rich carriers hide more. Pre-flight with img_core.pvd_capacity_bits before encoding."
+    }
+  },
+  {
+    "id": "cap-image-dct",
+    "name": "Generic JPEG DCT capacity",
+    "category": "capacity_model",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1997-01-01", null],
+    "confidence": "primary",
+    "aliases": ["dct-capacity", "jpeg-dct-capacity"],
+    "citations": ["itu-t81-jpeg"],
+    "see_also": ["image-dct"],
+    "technical_body": {
+      "technique_id": "image-dct",
+      "formula": "capacity_bits = floor(W / block_size) * floor(H / block_size); usable_bytes = max(0, capacity_bits // 8 - 9)",
+      "variables": {
+        "W, H": "image width and height in pixels",
+        "block_size": "8 by default (fixed for browser interop); configurable 1..32",
+        "9 header bytes": "DCTS magic (4) + strength byte (1) + big-endian u32 length (4)",
+        "robustness": "quantization step 10/25/50 for low/medium/high — controls per-bit visibility and re-encode survival but NOT capacity; ST3GG's dct_encode embeds one bit at coefficient position (0,1) of every 8×8 block regardless of robustness"
+      },
+      "worked_example": "1920×1080 @ block_size=8 → floor(1920/8) * floor(1080/8) = 240 * 135 = 32,400 bits; usable_bytes = 32400/8 - 9 = 4041 bytes ≈ 3.9 KB.",
+      "notes": "ST3GG's img_core.dct_encode uses exactly one embedding position, (0,1), per 8×8 luminance block — matching the browser Text Lab DCT tool. Robustness picks how strongly to quantize that one coefficient (low=10, medium=25, high=50), not how many coefficients per block are used. Higher robustness survives more re-encoding at the cost of visible banding; capacity is invariant."
+    }
+  },
+  {
+    "id": "cap-image-f5",
+    "name": "F5 matrix-encoding capacity",
+    "category": "capacity_model",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-04-25", null],
+    "confidence": "primary",
+    "aliases": ["f5-capacity"],
+    "citations": ["westfeld-2001-f5"],
+    "see_also": ["image-f5"],
+    "technical_body": {
+      "technique_id": "image-f5",
+      "formula": "capacity_bits = |nonzero_AC_coefs| * k / (2^k - 1)",
+      "variables": {
+        "|nonzero_AC_coefs|": "count of non-zero AC DCT coefficients after quantization (highly Q-table-dependent)",
+        "k": "matrix-encoding parameter; typical range 1-4. k=1 collapses to LSB replacement; larger k trades capacity for fewer changes per bit."
+      },
+      "worked_example": "1920×1080 Q75 JPEG has ~500K nonzero AC coefs. At k=3: 500000 * 3/7 ≈ 214,000 bits ≈ 26 KB before shrinkage.",
+      "notes": "Shrinkage (coefficients decremented to 0 must be re-embedded) reduces effective capacity by ~5-10% on typical natural images. The k-vs-capacity tradeoff is F5's key innovation over jsteg."
+    }
+  },
+  {
+    "id": "cap-image-jsteg",
+    "name": "jsteg capacity",
+    "category": "capacity_model",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "primary",
+    "aliases": ["jsteg-capacity"],
+    "citations": ["itu-t81-jpeg"],
+    "see_also": ["image-jsteg"],
+    "technical_body": {
+      "technique_id": "image-jsteg",
+      "formula": "capacity_bits = |nonzero_AC_coefs| - header_overhead_bits",
+      "variables": {
+        "|nonzero_AC_coefs|": "same as F5; typically ~500K on a 1920×1080 Q75 JPEG"
+      },
+      "worked_example": "500K nonzero AC coefs → ~62 KB raw, ~62 KB minus 16-bit length prefix.",
+      "notes": "One bit per nonzero AC coefficient. Detected by chi-square (Westfeld-Pfitzmann 1999); the technique the attack was invented against."
+    }
+  },
+  {
+    "id": "cap-text-zero-width",
+    "name": "Zero-width steg capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["zw-capacity"],
+    "citations": ["rfc-3629-utf8"],
+    "see_also": ["text-zero-width"],
+    "technical_body": {
+      "technique_id": "text-zero-width",
+      "formula": "capacity_bytes = unbounded (extends cover); stego_length = cover_length + 8 * payload_bytes + 2 (delimiters)",
+      "variables": {
+        "payload_bytes": "length of the plaintext payload in UTF-8 bytes",
+        "cover_length": "cover text is unmodified except for a trailing invisible run of ZWSP/ZWNJ codepoints"
+      },
+      "worked_example": "100-byte payload → 802 zero-width codepoints appended to the cover (100*8 = 800 bits + 2 ZWJ delimiters).",
+      "notes": "No prefix scheme (delimiter-bracketed), so there's no capacity ceiling from the cover — the payload is appended. Dies to Unicode normalization and terminal glyph filtering."
+    }
+  },
+  {
+    "id": "cap-text-cyrillic-homoglyph",
+    "name": "Cyrillic homoglyph steg capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2005-08-01", null],
+    "confidence": "primary",
+    "aliases": ["cyrillic-capacity"],
+    "citations": ["unicode-tr36-security"],
+    "see_also": ["text-cyrillic-homoglyph"],
+    "technical_body": {
+      "technique_id": "text-cyrillic-homoglyph",
+      "formula": "capacity_bytes = floor((count_of_Latin_letters_in_cover - 16) / 8)",
+      "variables": {
+        "count_of_Latin_letters_in_cover": "number of ASCII a-z / A-Z codepoints in the cover text",
+        "-16": "16-bit LE length prefix consumes 16 carrier positions"
+      },
+      "worked_example": "Cover with 664 Latin letters → floor((664-16)/8) = 81 payload bytes.",
+      "notes": "Length-prefixed, so covers with < 16 Latin letters fail with a TextStegCapacityError before encoding starts."
+    }
+  },
+  {
+    "id": "cap-text-cjk-homoglyph",
+    "name": "CJK homoglyph steg capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2020-01-01", null],
+    "confidence": "primary",
+    "aliases": ["cjk-capacity", "fullwidth-capacity"],
+    "citations": ["unicode-tr36-security"],
+    "see_also": ["text-cjk-homoglyph"],
+    "technical_body": {
+      "technique_id": "text-cjk-homoglyph",
+      "formula": "capacity_bytes = floor((count_of_ASCII_punct_in_cover - 16) / 8)",
+      "variables": {
+        "count_of_ASCII_punct_in_cover": "count of , . ; : ! ? ( ) codepoints in the cover"
+      },
+      "worked_example": "Cover with 88 ASCII punctuation marks → floor((88-16)/8) = 9 payload bytes.",
+      "notes": "Cover selection is the practical constraint — most prose is letter-heavy, so CJK-homoglyph capacity is lower than cyrillic on the same text."
+    }
+  },
+  {
+    "id": "cap-text-whitespace",
+    "name": "Whitespace steg capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["snow-capacity", "whitespace-capacity"],
+    "citations": ["morkovkin-snow"],
+    "see_also": ["text-whitespace"],
+    "technical_body": {
+      "technique_id": "text-whitespace",
+      "formula": "capacity_bytes = line_count - 2 (2 lines consumed by the 16-bit length prefix)",
+      "variables": {
+        "line_count": "number of lines with at least one trailing-whitespace slot in the cover"
+      },
+      "worked_example": "50-line cover → 48 payload bytes.",
+      "notes": "One byte per line (8 bits of trailing space/tab pattern). Dies wherever the receiver trims trailing whitespace."
+    }
+  },
+  {
+    "id": "cap-text-invisible-ink",
+    "name": "Invisible-ink tag block capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2015-06-01", null],
+    "confidence": "primary",
+    "aliases": ["tag-capacity"],
+    "citations": ["unicode-tag-block", "greenberg-2024-tag-injection"],
+    "see_also": ["text-invisible-ink"],
+    "technical_body": {
+      "technique_id": "text-invisible-ink",
+      "formula": "capacity_bytes = unbounded (extends cover); stego_length = cover_length + payload_bytes + 2 (delimiters)",
+      "variables": {
+        "payload_bytes": "printable ASCII payload length; each byte maps 1:1 into a tag codepoint"
+      },
+      "worked_example": "500-byte payload → 502 tag codepoints appended.",
+      "notes": "One tag codepoint per payload byte. High capacity relative to zero-width (8× more bits per codepoint), but dies to more transports (Slack paste, LLM tokenizer normalizers)."
+    }
+  },
+  {
+    "id": "cap-text-variation",
+    "name": "Variation selector capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["vs-capacity"],
+    "citations": ["unicode-variation-selectors"],
+    "see_also": ["text-variation"],
+    "technical_body": {
+      "technique_id": "text-variation",
+      "formula": "capacity_bytes = floor((count_of_alnum_in_cover - 16) / 8)",
+      "variables": {
+        "count_of_alnum_in_cover": "count of alphanumeric codepoints in the cover (each can carry a bit)"
+      },
+      "worked_example": "Cover with 400 alphanumerics → floor((400-16)/8) = 48 payload bytes."
+    }
+  },
+  {
+    "id": "cap-text-combining",
+    "name": "Combining-mark capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2003-01-01", null],
+    "confidence": "primary",
+    "aliases": ["cgj-capacity"],
+    "citations": ["unicode-nfkc"],
+    "see_also": ["text-combining"],
+    "technical_body": {
+      "technique_id": "text-combining",
+      "formula": "capacity_bytes = floor((count_of_alpha_in_cover - 16) / 8)",
+      "variables": {
+        "count_of_alpha_in_cover": "count of alphabetic codepoints"
+      },
+      "worked_example": "Cover with 320 alphabetic chars → floor((320-16)/8) = 38 payload bytes."
+    }
+  },
+  {
+    "id": "cap-text-confusable",
+    "name": "Confusable whitespace capacity",
+    "category": "capacity_model",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2010-01-01", null],
+    "confidence": "primary",
+    "aliases": ["confusable-capacity"],
+    "citations": ["unicode-tr36-security"],
+    "see_also": ["text-confusable"],
+    "technical_body": {
+      "technique_id": "text-confusable",
+      "formula": "capacity_bytes = floor((count_of_ASCII_spaces_in_cover - 8) / 4)",
+      "variables": {
+        "count_of_ASCII_spaces_in_cover": "count of U+0020 codepoints; each carries 2 bits by variant substitution",
+        "-8": "16-bit length prefix consumes 8 spaces (2 bits each)"
+      },
+      "worked_example": "Cover with 200 ASCII spaces → floor((200-8)/4) = 48 payload bytes."
+    }
+  }
+]

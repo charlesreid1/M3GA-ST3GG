@@ -124,8 +124,13 @@
     "aliases": ["corkami", "albertini-polyglots"],
     "kind": "reference-corpus",
     "authors": ["Ange Albertini"],
-    "location": "https://github.com/corkami/pocs and https://github.com/angea/pocorgtfo",
-    "notes": "Canonical polyglot proof-of-concept catalog. PNG+ZIP, PDF+*, JPEG+*, and the file-format-abuse pattern language used by PoC||GTFO."
+    "location": "https://github.com/corkami/pocs (PoCs and format grammars) + https://github.com/angea/pocorgtfo (PoC||GTFO issue archive)",
+    "anchor_artifacts": [
+      "corkami/pocs/tree/master/mini/polyglots — the minimal polyglot suite (PNG+ZIP, JPEG+ZIP, PDF+ZIP, etc.)",
+      "Albertini, 'Abusing file formats', PoC||GTFO 0x07 (2015) — the canonical format-abuse writeup",
+      "Albertini, 'Binary art: byte-level construction', PoC||GTFO 0x08 (2015) — PDF+ELF and PDF+other polyglots"
+    ],
+    "notes": "Canonical polyglot proof-of-concept catalog. PNG+ZIP, PDF+*, JPEG+*, and the file-format-abuse pattern language used by PoC||GTFO. Not a single paper — a maintained corpus. Cite the specific anchor artifact (mini/polyglots/<name> or PoC||GTFO 0x07 §N) when a claim depends on exact bytes."
   },
   {
     "id": "rfc-2083-png",

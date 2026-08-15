@@ -78,7 +78,11 @@ would resolve it.
 - **Bit-plane entropy thresholds**. The field guide's signature records
   cite "~2-4" for uncompressed ASCII and "~7.9-8.0" for encrypted /
   compressed. These are ST3GG-lore ranges; not tied to a controlled
-  measurement across cover images.
+  measurement across cover images. **Partial resolution (2026-08):** the
+  two signature records now downgrade `strength` from `strong` to
+  `moderate`, add a `threshold_provenance` field explaining the range's
+  heuristic origin, and cross-reference this file. Actual measurement
+  still pending.
 
 ## Technique claims
 
@@ -89,6 +93,11 @@ would resolve it.
   extrapolation, not a controlled psychophysical result on this exact
   scheme. Resolve by citing a study that measured LSB detectability
   vs channel choice (Fridrich lab has some in this space).
+  **Partial resolution (2026-08):** the `image-lsb` record's notes now
+  distinguish the perceptual argument (defensible, cites BT.601) from
+  the statistical-detectability argument (chi-square/RS/SPA attack all
+  three channels regardless of perceptual weighting). Controlled
+  psychophysical study still uncited.
 - **"Slack could tighten the strip list at any time"**.
   `sv-png-private-chunk-slack-upload` carries this caveat. We don't have
   a specific date or Slack changelog entry justifying it — it's a
@@ -98,27 +107,44 @@ would resolve it.
   `capacity_models.json::cap-image-f5`. This is a textbook ballpark
   (Westfeld 2001 discusses it qualitatively); we haven't measured it on
   a representative cover set with our F5 implementation.
-- **DCT robustness=medium survives 10 usable coefs per block**. Also in
+- **DCT robustness=medium survives 10 usable coefs per block**. ~~Also in
   `cap-image-dct`. The coefficient count per block is implementation-
-  specific to `img_core.dct_encode`; not a spec claim. Resolve by
-  documenting exactly which coefficient positions the encoder uses at
-  each robustness setting.
+  specific to `img_core.dct_encode`; not a spec claim.~~ **Resolved
+  (2026-08).** Direct code inspection of `img_core.dct_encode` showed the
+  encoder embeds one bit per 8×8 block at coefficient position (0,1) —
+  a single position, invariant across all three robustness settings.
+  `cap-image-dct` and `image-dct` records updated: capacity is now
+  correctly `(W/8) * (H/8) / 8 - 9` bytes; robustness controls the
+  quantization step (10/25/50) of that one coefficient, not the number
+  of coefficients used.
 
 ## Historical / provenance claims
 
-- **"F5 → nsF5 → HUGO → S-UNIWARD academic lineage"**. Referenced in the
-  plan and mentioned in `tool-aletheia`; not explicitly modeled as a
-  history record. Resolve by writing `knowledge/history/f5-lineage.md`
-  when Tier 4 lands.
-- **Ange Albertini polyglot catalog**. Cited as `albertini-polyglots` in
-  bibliography with a generic URL; not a specific paper reference. The
-  polyglot canon is a maintained corpus, not a single paper. Improve by
-  citing the specific artifact-of-record (Corkami repo commit or PoC||GTFO
-  article).
-- **Aphex Twin spectrogram anecdote**. `ctf-spectrogram-hide` mentions
+- **"F5 → nsF5 → HUGO → S-UNIWARD academic lineage"**. ~~Referenced in
+  the plan and mentioned in `tool-aletheia`; not explicitly modeled as
+  a history record.~~ **Resolved (2026-08).** Written as
+  `knowledge/history/f5-lineage.md` with the four-generation arc and
+  the "each generation defeats the prior generation's canonical
+  attack" pattern.
+- **Ange Albertini polyglot catalog**. ~~Cited as `albertini-polyglots`
+  in bibliography with a generic URL; not a specific paper reference.
+  The polyglot canon is a maintained corpus, not a single paper.~~
+  **Resolved (2026-08).** The bibliography record now carries an
+  `anchor_artifacts` list pointing at the specific artifacts to cite
+  when claims depend on exact bytes: corkami/pocs/mini/polyglots (the
+  minimal polyglot suite), Albertini's *Abusing file formats* article
+  in PoC||GTFO 0x07 (2015), and *Binary art: byte-level construction*
+  in PoC||GTFO 0x08 (2015).
+- **Aphex Twin spectrogram anecdote**. ~~`ctf-spectrogram-hide` mentions
   Windowlicker containing his face as a spectrogram in the last minutes.
   This is folklore-adjacent; we should cite either the Aphex Twin
-  interview or an audio-forensics writeup.
+  interview or an audio-forensics writeup.~~ **Resolved (2026-08).** The
+  worked_example now names the specific track ("ΔMi−1 = −α ∑n=1N Di[n]"
+  from the 1999 Windowlicker EP — the track title is literally the
+  delta-modulation equation) and adds a `provenance` field explaining
+  the claim is directly reproducible from released audio: any Audacity
+  or sox spectrogram view of that track shows the rendered image. No
+  longer folklore-adjacent.
 
 ## Mode-gate heuristics
 
@@ -138,13 +164,16 @@ would resolve it.
   cells. Umbrella records (`sv-text-http-raw` with `applies_to`) cover a
   swath but not the full grid. The transport matrix legend already
   distinguishes `❓ untested` from real verdicts.
-- **Deep per-technique splits.** `image/lsb/`, `image/f5/`,
-  `text/zero-width/`, and `text/homoglyph-cyrillic/` carry the full
-  README + reference + walkthrough + recognition split. Every other
-  technique in the plan has an orient README only. Extending the deep
-  split to the next tier (image/dct, image/pvd, image/matryoshka,
-  text/invisible-ink, text/whitespace, network/dns-tunneling) is the
-  next major prose fill.
+- **Deep per-technique splits.** The full README + reference + walkthrough
+  + recognition split now covers 10 techniques: `image/lsb/`,
+  `image/f5/`, `image/dct/`, `image/pvd/`, `image/matryoshka/`,
+  `text/zero-width/`, `text/homoglyph-cyrillic/`, `text/invisible-ink/`,
+  `text/whitespace/`, and `network/dns-tunneling/`. The remaining ~35
+  subtopics still only carry an orient README. Next tier for the deep
+  split: `image/png-chunks/`, `image/polyglots/`, `image/gif/`,
+  `text/variation-selectors/`, `emoji/tag-sequences/`,
+  `detection/chi-square/`, `detection/rs-analysis/`,
+  `transport/canonicalization/`.
 
 ---
 

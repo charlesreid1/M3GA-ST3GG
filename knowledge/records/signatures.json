@@ -67,12 +67,13 @@
     "citations": ["st3gg-field-guide"],
     "see_also": ["image-lsb", "det-bit-plane-entropy"],
     "technical_body": {
-      "pattern": "bit-plane entropy on the suspicious plane is ~2-4",
+      "pattern": "bit-plane entropy on the suspicious plane is ~2-4 bits/byte",
       "probable_technique": "raw structured content, almost certainly uncompressed ASCII text",
       "next_action": "dump raw bits, decode as ASCII, print head",
-      "strength": "strong"
+      "strength": "moderate",
+      "threshold_provenance": "heuristic — the 2-4 bits/byte range matches English prose entropy (Shannon 1951 estimated ~1-1.5 bits/char lower bound, ~4 bits/char upper for character n-grams). ST3GG has not measured this threshold against a controlled clean-cover corpus; a plane exactly at 2.5 bits/byte on an uncompressed-ASCII payload is expected but exact bounds shift with cover statistics. Cross-reference: known-unknowns.md 'Bit-plane entropy thresholds'."
     },
-    "notes": "English text is not high-entropy; this is the giveaway that whoever hid it didn't compress or encrypt."
+    "notes": "English text is not high-entropy; this is the giveaway that whoever hid it didn't compress or encrypt. Ranges are heuristic — compare against a same-cover clean baseline when possible."
   },
   {
     "id": "sig-high-plane-entropy-encrypted",
@@ -86,10 +87,11 @@
     "citations": ["st3gg-field-guide"],
     "see_also": ["image-lsb", "det-bit-plane-entropy"],
     "technical_body": {
-      "pattern": "bit-plane entropy on the suspicious plane is ~7.9-8.0",
+      "pattern": "bit-plane entropy on the suspicious plane is ~7.9-8.0 bits/byte (near-uniform)",
       "probable_technique": "compressed or encrypted payload — ciphertext and gzip both look like uniform noise",
       "next_action": "cannot recover without key or format; report technique + entropy, do not fabricate a plaintext",
-      "strength": "strong"
+      "strength": "moderate",
+      "threshold_provenance": "heuristic — the ~7.9-8.0 range matches the near-uniform distribution of AES-GCM ciphertext or well-compressed data. ST3GG has not measured this against a controlled clean-cover corpus; a clean natural cover's LSB plane can climb to ~7.5-7.8 depending on sensor noise. A single-plane hit near 7.9 is a signal, not a proof. Cross-reference: known-unknowns.md 'Bit-plane entropy thresholds'."
     }
   },
   {

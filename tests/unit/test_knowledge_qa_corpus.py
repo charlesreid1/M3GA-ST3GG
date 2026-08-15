@@ -192,10 +192,17 @@ def test_jsteg_is_lsb_over_nonzero_ac_coefs(store):
     assert "nonzero" in formula.lower() and "coefficient" in formula.lower()
 
 
-def test_dct_capacity_is_one_bit_per_64_pixels(store):
-    """8×8 DCT block = 64 pixels → ~1 bit per block per AC coef."""
+def test_dct_capacity_is_one_bit_per_block(store):
+    """ST3GG's dct_encode embeds one bit per 8×8 block at coefficient
+    position (0,1). Capacity formula must expose the (W/8)*(H/8) block-count
+    and the 9-byte DCTS header overhead — NOT a fictitious 'coefficients per
+    block' knob that varies with robustness."""
     body = _body(store, "image-dct")
-    assert "64" in body["capacity_formula"]
+    # capacity is expressed in blocks and includes the 9-byte header subtract
+    assert "W//8" in body["capacity_formula"] or "W/8" in body["capacity_formula"]
+    assert "9" in body["capacity_formula"]
+    # robustness must clarify it doesn't touch capacity
+    assert "NOT" in body["robustness"] or "not" in body["robustness"]
 
 
 def test_dct_has_three_robustness_levels(store):
@@ -533,10 +540,13 @@ def test_multiple_bit_planes_signature_indicates_multi_bpc(store):
 
 
 def test_low_entropy_signature_indicates_uncompressed_ascii(store):
-    """Entropy ~2-4 on the suspicious plane → English ASCII, no compression."""
+    """Entropy ~2-4 on the suspicious plane → English ASCII, no compression.
+    Strength is 'moderate', not 'strong' — the threshold range is heuristic
+    (see threshold_provenance) and needs a same-cover baseline to be a proof."""
     body = _body(store, "sig-low-plane-entropy-ascii")
-    assert body["strength"] == "strong"
+    assert body["strength"] == "moderate"
     assert "ASCII" in body["probable_technique"]
+    assert "heuristic" in body.get("threshold_provenance", "").lower()
 
 
 def test_high_entropy_signature_indicates_encrypted_or_compressed(store):

@@ -413,7 +413,7 @@
       "stealth_class": "invisible (small payload) | visibly-perturbed (large payload)",
       "requires_extras": []
     },
-    "notes": "The canonical ST3GG hide. Blue-channel 1-bpc randomized is the stealth default because blue is weighted lowest in human luminance. Chi-square / RS / SPA all attack this technique — see detectors.json."
+    "notes": "The canonical ST3GG hide. Blue-channel 1-bpc randomized is ST3GG's default because the BT.601 luminance formula weights blue lowest (0.114 vs green 0.587 vs red 0.299), so the same magnitude of pixel-value change in blue contributes less to perceived brightness. This is a *perceptual* argument, not a controlled psychophysical result on LSB detectability — modern steganalysis (chi-square, RS, SPA) attacks all three channels statistically regardless of which is 'quieter to the eye'. See known-unknowns.md for the outstanding measurement. Chi-square / RS / SPA all attack this technique — see detectors.json."
   },
   {
     "id": "image-pvd",
@@ -451,13 +451,14 @@
     "technical_body": {
       "code_module": "img_core.dct_encode / img_core.dct_decode",
       "block_size": 8,
-      "capacity_formula": "~1 bit per 64 pixels (per 8×8 DCT block AC coefficient)",
-      "robustness": "low | medium | high — higher robustness embeds in more resistant coefficient positions at lower capacity",
-      "header_format": "ST3GG v3 header",
-      "stealth_class": "invisible",
-      "requires_extras": ["jpeg (Pillow with libjpeg)"]
+      "embed_position": "(0, 1) — first horizontal-frequency AC coefficient in the 8×8 luminance DCT",
+      "capacity_formula": "1 bit per 8×8 block; usable_bytes = (W//8) * (H//8) / 8 - 9 header bytes",
+      "robustness": "low (strength 10) | medium (25) | high (50) — quantization step of the (0,1) coefficient; controls per-bit visibility and JPEG re-encode survival, NOT capacity",
+      "header_format": "DCTS 9-byte header (4-byte magic + 1-byte strength + 4-byte BE length). NOT the ST3GG v3 header — no password / no AES.",
+      "stealth_class": "invisible at low/medium robustness on natural covers; visible banding at high robustness",
+      "requires_extras": []
     },
-    "notes": "Robust to JPEG re-quantization when the destination Q matches the source. The 'tuned only' JPEG cell that survived Slack corresponds to careful choice of embed positions."
+    "notes": "Interop-compatible with the browser Text Lab DCT tool (index.html) — same magic bytes, same embed position, same three robustness settings. Encrypt separately (e.g. crypto.encrypt_gcm) before dct_encode if payload confidentiality matters."
   },
   {
     "id": "image-f5",
