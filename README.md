@@ -347,7 +347,7 @@ Five docs describe the agent surface. Each has a different audience and a differ
 | [`AGENTS.md`](AGENTS.md) | Repo orientation, install, entry-point framing, ground rules | An agent dropped into the repo to modify code |
 | [`skills/stegg-cli/SKILL.md`](skills/stegg-cli/SKILL.md) | When-to-fire triggers + invocation recipes for the subprocess CLI | The host's skill picker, before touching the repo |
 | [`skills/stegg-stego/SKILL.md`](skills/stegg-stego/SKILL.md) + [`REFERENCE.md`](skills/stegg-stego/REFERENCE.md) | When-to-fire triggers, tool-selection heuristics, workflow recipes for the MCP server (SKILL.md); exhaustive per-tool spec (REFERENCE.md) | The host's skill picker (SKILL.md); the agent mid-session when it needs argument tables (REFERENCE.md) |
-| [`st3ggmcp/field_guide.md`](st3ggmcp/field_guide.md) | Analyst persona, technique catalog, signal-reading heuristics, transport-survival tables | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
+| [`st3ggmcp/field_guide.md`](st3ggmcp/field_guide.md) | ST3GG persona, mode gate, dispatch tables, verdict semantics, response format (~290 lines; the technique catalog / capacity numbers / transport-survival tables / pattern-diagnosis snippets live in the KR — cite via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_search_records`) | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
 | [`knowledge/`](knowledge/) (records + prose corpus) | Cited numeric facts (bits/pixel, survival cells, capacity formulas, bibliography) and split-per-topic prose (`README` / `reference` / `walkthrough` / `recognition` / `history`) | An agent that needs a citation-backed answer, fetched on-demand via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg://<topic>/<name>` |
 
 For the full audience-and-when-read matrix, plus the rule about which doc owns what, see [`AGENTS.md#docs-map`](AGENTS.md#docs-map). To make the skills discoverable in Claude Code, follow the symlink recipe in [`AGENTS.md#install-the-skills`](AGENTS.md#install-the-skills).
@@ -432,14 +432,25 @@ ST3GG/
 │   ├── records.py          #   Typed-record loader (strict load-time validation)
 │   ├── tools/              #   Per-family tool modules (image / text / triage /
 │   │                       #     network / jailbreak / knowledge / meta)
-│   ├── field_guide.md      #   ST3GG persona + technique catalog
-│   └── TRANSPORT_MATRIX.md #   Human-readable transport survival scoreboard
+│   ├── field_guide.md      #   ST3GG persona + heuristics + mode gate (~290 lines)
+│   └── TRANSPORT_MATRIX.md #   Transport survival table — generated from
+│                           #     knowledge/records/survival.json by
+│                           #     scripts/render_transport_matrix.py
 ├── knowledge/              # Typed KR + prose corpus (see below)
 │   ├── MANIFEST.md
+│   ├── known-unknowns.md   #   Running audit of claims not yet tied to a
+│   │                       #     primary source (Tier-N fill priorities)
 │   ├── records/            #   *.json — bibliography, techniques, transports,
-│   │                       #     survival, detectors, signatures, myths, ...
-│   └── <topic>/            #   Prose corpus, one idea per file, exposed as
+│   │                       #     survival, detectors, signatures, myths,
+│   │                       #     capacity_models, external_tools, ctf_genres,
+│   │                       #     layers, carrier_formats
+│   └── <topic>/            #   Prose corpus. Topic README + optional
+│                           #     <subtopic>/{README,reference,walkthrough,
+│                           #     recognition}.md deep splits; exposed as
 │                           #     MCP resources at stegg://<topic>/<name>
+├── scripts/                # Doc-generation helpers
+│   ├── render_skill_tool_index.py    #   syncs skills/*.md tool tables to TOOL_SCHEMAS
+│   └── render_transport_matrix.py    #   regenerates TRANSPORT_MATRIX.md from survival.json
 ├── skills/                 # Agent skill definitions
 │   ├── stegg-cli/SKILL.md
 │   └── stegg-stego/{SKILL,REFERENCE}.md
@@ -466,14 +477,21 @@ One JSON array per category, each record carrying a mandatory envelope (`id`, `n
 | `carrier_formats.json` | Format specs: PNG chunk grammar, JPEG DCT structure, WAV RIFF, PCAP frames. |
 | `layers.json` | The five canonical steg layers (bit / coefficient / character / container / semantic). |
 | `transports.json` | Delivery channels with `canonical_layer`, `known_strips[]`, `known_recodes[]`. |
-| `survival.json` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}`, evidence, tested_at. |
+| `survival.json` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}`, evidence, tested_at. Regenerates `TRANSPORT_MATRIX.md`. |
 | `detectors.json` | Chi-square, RS, sample-pairs, bit-plane entropy, F5 signature, PVD detector. |
-| `signatures.json` | "If you see X, technique is probably Y" pattern-diagnosis records. |
+| `signatures.json` | "If you see X, technique is probably Y" pattern-diagnosis records (with Python snippets where they clarify). |
 | `myths.json` | Explicit false claims (powers `stegg_verify_claim`). |
+| `capacity_models.json` | Per-technique capacity formulas + worked examples (image LSB / PVD / DCT / F5 / jsteg + eight text methods). |
+| `external_tools.json` | steghide, jsteg, outguess, zsteg, stegdetect, binwalk, foremost, StegExpose, Aletheia, ExifTool with capability + interop notes. |
+| `ctf_genres.json` | Compound-technique catalog: matryoshka, chained-carrier, polyglot-injection, spectrogram, unicode-tag-jailbreak, alpha-channel, PNG private-chunk. |
 
 ### Prose corpus — `knowledge/<topic>/`
 
-One directory per topic (`image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`), one idea per markdown file. Each topic starts with `README.md` and may add `reference.md`, `walkthrough.md`, `recognition.md`, `history.md` as the material demands. Every file is auto-exposed as an MCP resource at `stegg://<topic>/<name>`.
+One directory per topic (`image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`), one idea per markdown file. Each topic starts with `README.md` and can drill down with per-technique subdirectories that carry a `README` (orient) + `reference` (params) + `walkthrough` (end-to-end) + `recognition` (15-second triage) — for example `knowledge/image/lsb/{README,reference,walkthrough,recognition}.md`, and analogous splits under `image/f5/`, `text/zero-width/`, and `text/homoglyph-cyrillic/`. Every markdown file is auto-exposed as an MCP resource at `stegg://<topic>/<name>` (and `<topic>/<subtopic>/<file>` where the split exists).
+
+### Honesty signal — `knowledge/known-unknowns.md`
+
+A running audit of every claim ST3GG *acts on* in the field guide or KR that isn't yet tied to a primary source or a first-party measurement. Fix by adding a citation or by running a probe and landing the result in `survival.json`. Adding to the list is *good* — it's the audit trail for what ST3GG doesn't know it doesn't know.
 
 ### Retrieval tools (MCP)
 

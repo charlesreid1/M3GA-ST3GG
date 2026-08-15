@@ -89,15 +89,16 @@ Meta:
 
 ## Resources
 
-- `stegg://field-guide` — the full ST3GG persona + technique catalog + signal-reading heuristics + response format. Read this before analyzing files.
-- `stegg://<topic>/<name>` — every markdown file under `knowledge/<topic>/` is auto-exposed as a resource. Topics live in `knowledge/MANIFEST.md`; each is a one-idea-per-file corpus (`README.md` orient, plus optional `reference.md` / `walkthrough.md` / `recognition.md` / `history.md`). List via `stegg_list_topics`; read via `stegg_read_lore(topic, name)`.
+- `stegg://field-guide` — the ST3GG persona + heuristics + mode gate + response format. Reads under 300 lines; technique catalog / capacity numbers / transport survival / pattern-diagnosis snippets live in the typed KR (`stegg_lookup_technique`, `stegg_verify_survival`, `stegg_search_records` on `category=signature`) and prose corpus (`stegg://<topic>/<name>`).
+- `stegg://<topic>/<name>` — every markdown file under `knowledge/<topic>/` is auto-exposed as a resource, at any depth. Topics live in `knowledge/MANIFEST.md`; each is a one-idea-per-file corpus. Topic-level `README.md` orients; per-technique subdirectories drill down (`README` + `reference` + `walkthrough` + `recognition`) — for example `stegg://image/lsb/reference`, `stegg://text/zero-width/walkthrough`. List via `stegg_list_topics`; read via `stegg_read_lore(topic, name)`.
 
 ## Knowledge base
 
 Two layers live under `knowledge/`:
 
-- **`knowledge/records/`** — typed JSON with a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` and the server won't boot. Loaded by `st3ggmcp.records.RecordStore` and served by the `stegg_lookup_*` / `stegg_verify_*` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_explain_pipeline` / `stegg_search_records` tools.
-- **`knowledge/<topic>/`** — prose corpus, one markdown file per idea. Every file becomes an MCP resource at `stegg://<topic>/<name>`. Design + discipline in `knowledge/MANIFEST.md`; the plan behind the split lives in `plan-knowledge-base.md`.
+- **`knowledge/records/`** — typed JSON with a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Twelve category files: `bibliography`, `techniques`, `carrier_formats`, `layers`, `transports`, `survival`, `detectors`, `signatures`, `myths`, `capacity_models`, `external_tools`, `ctf_genres`. Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` and the server won't boot. Loaded by `st3ggmcp.records.RecordStore` and served by the `stegg_lookup_*` / `stegg_verify_*` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_explain_pipeline` / `stegg_search_records` tools. `TRANSPORT_MATRIX.md`'s matrix table is generated from `survival.json` by `scripts/render_transport_matrix.py`.
+- **`knowledge/<topic>/`** — prose corpus, one markdown file per idea. Topic-level `README.md` orients; per-technique subdirectories carry the `README` + `reference` + `walkthrough` + `recognition` split (see `image/lsb/`, `image/f5/`, `text/zero-width/`, `text/homoglyph-cyrillic/`). Every file becomes an MCP resource at `stegg://<topic>/<name>` at any depth. Design + discipline in `knowledge/MANIFEST.md`; the plan behind the split lives in `plan-knowledge-base.md`.
+- **`knowledge/known-unknowns.md`** — running audit of every claim ST3GG acts on that isn't yet tied to a primary source. Add to it whenever you spot uncited claims; fix by adding a citation or landing a first-party probe.
 
 Adding a record or a corpus file: see `knowledge/MANIFEST.md#adding-a-record` and `knowledge/records/README.md`.
 

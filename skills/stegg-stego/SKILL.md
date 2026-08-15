@@ -120,13 +120,13 @@ The autogen block above is the menu; this section is the decision guide. Reach f
 
 **Jailbreak / transforms (`stegg_jailbreak_*` / `stegg_transforms_list`)** — composers and detectors for authorized red-team ops, CTFs, DEF CON challenges, hardware badges, detection-tuning, and forensic research (see `AGENTS.md` for the parent framing). Composers stitch obfuscation pipelines from `transforms_core` (zalgo, fullwidth, leetspeak) with text stego or image LSB to produce end-to-end prompt-injection payloads. The detection sweep (`stegg_jailbreak_detect`) is the blue-team side of the same catalog — scan filenames, PNG chunks, LSB pixels, trailing bytes, and Unicode obfuscation in one call.
 
-**Text / emoji** — 15 methods spanning invisible (zero-width, homoglyph, variation selectors, whitespace) and visibly-perturbed (braille, emoji, skintone). `stegg_text_steg` / `stegg_text_steg_message` run the full detector suite; `stegg_text_encode` / `stegg_text_decode` operate on a named method. See `stegg://field-guide` for per-method transport-survival tables.
+**Text / emoji** — 15 methods spanning invisible (zero-width, homoglyph, variation selectors, whitespace) and visibly-perturbed (braille, emoji, skintone). `stegg_text_steg` / `stegg_text_steg_message` run the full detector suite; `stegg_text_encode` / `stegg_text_decode` operate on a named method. Per-method framing, capacity, and transport survival live in the KR — call `stegg_lookup_technique(name)` and `stegg_verify_survival(technique, transport)`.
 
 **Knowledge (`stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_search_records` / `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore`)** — the typed KR under `knowledge/records/*.json` and the prose corpus under `knowledge/<topic>/`. Reach for these **before answering technique-tradeoff, capacity, transport-survival, or "does X survive Y" questions from memory**. Every record carries an envelope (`citations`, `era_bounds`, `carrier_family`, `confidence`) that lets the model return cited answers instead of folklore. `stegg_verify_claim` grades natural-language assertions against `myths.json` (returns `false` / `needs_qualification` / `unverified`); `stegg_explain_pipeline` returns an ordered list of technique records for a stated goal (carrier + transport + stealth constraint). `stegg_search_records` scopes typed records; `stegg_search_lore` greps the prose corpus.
 
 ## Resources
 
-- `stegg://field-guide` — persona + technique catalog + signal-reading heuristics + verdict semantics + response format. **Read this before analyzing a file.**
+- `stegg://field-guide` — persona + heuristics + mode gate + verdict semantics + response format. **Read this before analyzing a file.** Technique catalog and pattern-diagnosis snippets now live in the KR (`stegg_lookup_technique`, `stegg_search_records(category="signature")`).
 - `stegg://<topic>/<name>` — prose corpus under `knowledge/<topic>/`. Every markdown file in the corpus is auto-exposed as an MCP resource. List with `stegg_list_topics`; read with `stegg_read_lore` (same content as the resource).
 
 ## Key constraints
@@ -168,7 +168,7 @@ The autogen block above is the menu; this section is the decision guide. Reach f
 
 **Hide data in text**
 1. `stegg_text_capacity` — pre-flight the cover.
-2. `stegg_text_encode` with a method matched to the transport (see `stegg://field-guide` for transport survival).
+2. `stegg_text_encode` with a method matched to the transport (verify with `stegg_verify_survival(method, transport)` or run `stegg_explain_pipeline` for a ranked candidate list).
 
 **Answer a "how does X work / how many bytes / does X survive Y" question with citations**
 1. `stegg_lookup_technique(name)` for the technique's `technical_body` (bits/carrier, prefix scheme, capacity formula, stealth class) + citations.

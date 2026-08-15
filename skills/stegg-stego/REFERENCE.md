@@ -126,20 +126,23 @@ Record categories (`knowledge/records/`):
 | `carrier_formats.json` | `carrier_format` | Format specs: PNG chunks, JPEG DCT, WAV RIFF, PCAP frames. |
 | `layers.json` | `layer` | The five canonical steg layers + normalization behavior. |
 | `transports.json` | `transport` | Delivery channels with `canonical_layer`, `known_strips[]`, `known_recodes[]`. |
-| `survival.json` | `survival` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}` + evidence. |
+| `survival.json` | `survival` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}` + evidence. Regenerates `TRANSPORT_MATRIX.md`. |
 | `detectors.json` | `detector` | Chi-square, RS, sample-pairs, bit-plane entropy, F5 sig, PVD detector. |
-| `signatures.json` | `signature` | "If you see X, technique is probably Y" pattern-diagnosis records. |
+| `signatures.json` | `signature` | "If you see X, technique is probably Y" pattern-diagnosis records (with Python snippets where they clarify). |
 | `myths.json` | `myth` | Explicit false claims (powers `stegg_verify_claim`). |
+| `capacity_models.json` | `capacity_model` | Per-technique capacity formulas + worked examples (LSB / PVD / DCT / F5 / jsteg + eight text methods). |
+| `external_tools.json` | `external_tool` | steghide, jsteg, outguess, zsteg, stegdetect, binwalk, foremost, StegExpose, Aletheia, ExifTool with capability + interop notes. |
+| `ctf_genres.json` | `ctf_genre` | Compound-technique catalog: matryoshka, chained-carrier, polyglot-injection, spectrogram, unicode-tag-jailbreak, alpha-channel, PNG private-chunk. |
 
 Response envelope: every knowledge tool that returns a single record wraps it with `{citations, era_bounds, carrier_family, confidence}` so downstream code can trust or discard the answer without re-reading the record.
 
 ## Resources
 
 ### `stegg://field-guide`
-The ST3GG persona document: technique catalog, signal-reading heuristics, extraction workflow, verdict semantics, code snippets, transport-survival tables. Fetch via `read_resource(stegg://field-guide)`.
+The ST3GG persona document: persona layers, mode gate, dispatch tables, verdict semantics, response format. Under 300 lines. Fetch via `read_resource(stegg://field-guide)`. The material this file used to inline (technique catalog, per-method framing, transport-survival tables, pattern-diagnosis snippets) lives in the typed KR — reach for `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_search_records(category="signature")` instead.
 
 ### `stegg://<topic>/<name>`
-Every markdown file under `knowledge/<topic>/` is auto-exposed as an MCP resource. Enumerate with `stegg_list_topics`; fetch with `stegg_read_lore(topic, name)` or `read_resource(stegg://<topic>/<name>)`. Topics as of this doc: `image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`.
+Every markdown file under `knowledge/<topic>/` is auto-exposed as an MCP resource, at any depth. Enumerate with `stegg_list_topics`; fetch with `stegg_read_lore(topic, name)` or `read_resource(stegg://<topic>/<name>)`. Topic READMEs as of this doc: `image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`. Per-technique deep splits (`README` + `reference` + `walkthrough` + `recognition`) exist under `image/lsb/`, `image/f5/`, `text/zero-width/`, `text/homoglyph-cyrillic/` — reachable as `stegg://image/lsb/reference` and so on.
 
 ## Errors
 

@@ -24,15 +24,21 @@ the server won't boot.
 - `detectors.json` — chi-square, RS, sample-pairs, bit-plane entropy,
   F5 signature scan, StegDetect, PVD detector.
 - `signatures.json` — "if you see X, technique is probably Y"
-  pattern-diagnosis records, mirroring the field guide's field-guide
-  section.
-- `capacity_models.json` — numeric formulas per technique, so
-  `stegg_capacity(technique, shape)` answers without invoking the
-  encoder.
-- `external_tools.json` — steghide, jsteg, outguess, StegExpose,
-  Aletheia, zsteg, binwalk, foremost, with interop notes.
-- `ctf_genres.json` — compound-technique catalog: chained challenges,
-  matryoshka, polyglot puzzles, spectrogram hides.
+  pattern-diagnosis records with Python snippets where they clarify.
+  These are what the ST3GG assistant reaches for when statistical
+  detectors scream but the ST3GG-header extractors bounce.
+- `capacity_models.json` — numeric formulas per technique with variable
+  legends and worked examples (LSB / PVD / DCT / F5 / jsteg plus eight
+  text methods). Cited so `stegg_lookup_technique(name)` returns a
+  number an agent can defend.
+- `external_tools.json` — steghide, jsteg, outguess, zsteg, stegdetect,
+  binwalk, foremost, StegExpose, Aletheia, ExifTool. Each carries
+  `install_hint`, `capabilities[]`, and `interop_notes` so ST3GG can
+  refuse to recommend a binary the box doesn't have.
+- `ctf_genres.json` — compound-technique catalog: matryoshka,
+  chained-carrier, polyglot-injection, spectrogram-hide,
+  unicode-tag-jailbreak, alpha-channel-hide, PNG private-chunk.
+  Each entry names the pipeline stages and their component technique ids.
 - `myths.json` — explicit false claims to refute
   ("LSB survives JPEG at Q99", "Cyrillic homoglyph survives NFKC").
   Powers `stegg_verify_claim`.
