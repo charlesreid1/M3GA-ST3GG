@@ -155,14 +155,14 @@ def main_stdio() -> None:
     Small argument surface -- stdio clients typically launch the process
     directly and don't pass configuration. Log level is the one useful knob.
     """
-    parser = argparse.ArgumentParser(description="ST3GG MCP stdio server")
+    parser = argparse.ArgumentParser(description="M3GA-ST3GG MCP stdio server")
     parser.add_argument("--log-level", default="info", help="log level for stderr (default info)")
     args = parser.parse_args()
     asyncio.run(_run_stdio(log_level=args.log_level))
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ST3GG MCP HTTP server")
+    parser = argparse.ArgumentParser(description="M3GA-ST3GG MCP HTTP server")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host (default 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8765, help="Bind port (default 8765)")
     parser.add_argument("--log-level", default="info", help="uvicorn/log level")
