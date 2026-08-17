@@ -184,7 +184,7 @@ T("count>=109", len(examples) >= 109, f"{len(examples)}")
 
 # --- TEST 13: JS checks ---
 print("TEST 13: JS Consistency")
-with open(Path(__file__).parent.parent / 'index.html') as f: html = f.read()
+with open(Path(__file__).parent.parent / 'web' / 'index.html') as f: html = f.read()
 for p in ['R','G','B','A','RG','RB','RA','GB','GA','BA','RGB','RGA','RBA','GBA','RGBA']:
     T(f"preset:{p}", f"'{p}':" in html)
 for b in range(1, 9):
@@ -304,7 +304,7 @@ T("browser_semi_raw_path", s16_semi_raw > 0,
 
 # --- TEST 17: JS source checks specific to past bugs ---
 print("TEST 17: Regression Guards (JS source checks for past bugs)")
-with open(Path(__file__).parent.parent / 'index.html') as f: html = f.read()
+with open(Path(__file__).parent.parent / 'web' / 'index.html') as f: html = f.read()
 
 # The createImageBitmap fix must NOT be in the codebase (broke things twice)
 T("no_createImageBitmap_in_decode",

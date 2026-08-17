@@ -10,7 +10,7 @@ Usage:
     python tests/transport/test_slack.py --gen-ui-kit   # Section 8 manual kit
 
 Outputs:
-    TRANSPORT_RESULTS_SLACK.json                        # filled matrix
+    transport_probes/slack/TRANSPORT_RESULTS_SLACK.json  # filled matrix
     transport_probes/slack/encoded/*                     # encoded artifacts
     transport_probes/slack/retrieved/*                   # downloaded artifacts
     transport_probes/slack/evidence/*.json               # per-cell evidence
@@ -49,7 +49,7 @@ EVIDENCE_DIR = PROBE_DIR / "evidence"
 
 SECRETS_PATH = Path(__file__).resolve().parent / "secrets_slack.json"
 MATRIX_PATH = Path(__file__).resolve().parent / "matrix_slack.json"
-RESULTS_PATH = REPO_ROOT / "TRANSPORT_RESULTS_SLACK.json"
+RESULTS_PATH = PROBE_DIR / "TRANSPORT_RESULTS_SLACK.json"
 
 PAYLOAD_PREFIX = "SLACK_PROBE"
 

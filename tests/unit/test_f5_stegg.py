@@ -88,7 +88,7 @@ def test_analyze_returns_capacity_list(clean_jpeg_bytes):
 
 def test_capacity_exceeded_raises(clean_jpeg_bytes):
     s = F5Stegg(b"key")
-    # Try to embed way more than clean.jpg can hold.
+    # Try to embed way more than the generated JPEG can hold.
     huge = b"x" * 100_000
     with pytest.raises(CapacityExceeded):
         s.embed(clean_jpeg_bytes, huge)
