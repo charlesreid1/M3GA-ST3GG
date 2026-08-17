@@ -113,7 +113,7 @@ Slack is split across three columns because the three transports behave very dif
 
 ### Slack: mechanism notes for surprising verdicts
 
-Verdicts come from `TRANSPORT_RESULTS_SLACK.json` (60 cells, run 2026-07-25). Only the rows below need mechanism context beyond what the table already says.
+Verdicts come from `transport_probes/slack/TRANSPORT_RESULTS_SLACK.json` (60 cells, run 2026-07-25). Only the rows below need mechanism context beyond what the table already says.
 
 **PNG private chunks (`stEg`) SURVIVE while `tEXt/iTXt/zTXt` are STRIPPED.** Slack's strip-list targets *named* ancillary text chunks, not "everything ancillary." Non-standard 4-char chunk types pass through. Working but fragile — Slack could tighten the strip-list.
 
@@ -139,9 +139,9 @@ To add a confirmed cell, you need three things:
 
 1. **A minimal test file** with a known payload embedded via the carrier technique.
 2. **A byte-level diff or extraction check** on the transport-delivered copy.
-3. **Evidence** — a row in a machine-readable results file (e.g. `TRANSPORT_RESULTS_SLACK.json`) so the cell is reproducible.
+3. **Evidence** — a row in a machine-readable results file (e.g. `transport_probes/slack/TRANSPORT_RESULTS_SLACK.json`) so the cell is reproducible.
 
-Standard test files ship in `st3ggmcp/tests/transport_probes/` (planned). Each test file has a known-good extractor that reports either "payload recovered" or "carrier mangled beyond recovery."
+Standard test files ship in `transport_probes/` at the repo root. Each test file has a known-good extractor that reports either "payload recovered" or "carrier mangled beyond recovery."
 
 Rough procedure:
 
