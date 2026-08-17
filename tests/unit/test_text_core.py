@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import analysis_tools as at
-import text_core
+import m3gast3gg.core.analysis as at
+import m3gast3gg.core.text as text_core
 
 FIXTURES = Path(__file__).parent / "fixtures" / "text_core"
 
@@ -633,7 +633,7 @@ def test_capitalization_fixture_python_source_of_truth():
 def test_mcp_round_trip(method):
     """encode/decode/capacity land through the MCP dispatcher for each new method."""
     import asyncio, json
-    from st3ggmcp.tools import execute_text_encode, execute_text_decode, execute_text_capacity
+    from m3gast3gg.mcp import execute_text_encode, execute_text_decode, execute_text_capacity
 
     cover = COVERS[method]
 
@@ -653,7 +653,7 @@ def test_mcp_text_steg_fires_new_detectors():
     """After encoding via each new technique, the MCP fan-out should surface a hit
     from the framing-aware detector we added for it."""
     import asyncio, json
-    from st3ggmcp.tools import execute_text_steg_message
+    from m3gast3gg.mcp import execute_text_steg_message
 
     expectations = [
         ("mathbold",       "detect_math_bold_steg"),

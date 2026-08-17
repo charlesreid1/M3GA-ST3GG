@@ -23,8 +23,8 @@ from typing import Any
 
 from PIL import Image
 
-import img_core
-import text_core
+import m3gast3gg.core.img as img_core
+import m3gast3gg.core.text as text_core
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ def op_lsb_encode(
     encrypted = False
     if password:
         try:
-            from crypto import encrypt as _encrypt
+            from m3gast3gg.core.crypto import encrypt as _encrypt
         except ImportError as exc:
             raise OperationError(
                 "encryption requires the 'crypto' extra: pip install stegg[crypto]"
@@ -343,7 +343,7 @@ def op_lsb_decode(
     # Decrypt
     if password and payload:
         try:
-            from crypto import decrypt as _decrypt
+            from m3gast3gg.core.crypto import decrypt as _decrypt
         except ImportError as exc:
             raise OperationError(
                 "decryption requires the 'crypto' extra: pip install stegg[crypto]"

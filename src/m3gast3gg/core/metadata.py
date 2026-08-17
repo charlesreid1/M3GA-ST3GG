@@ -288,7 +288,7 @@ def inject_png_text(png_bytes: bytes, metadata: dict[str, str]) -> bytes:
     """
     img = Image.open(io.BytesIO(png_bytes))
     # We delegate to img_core's existing PIL metadata injection.
-    from img_core import inject_metadata_pil as _pil_inject
+    from m3gast3gg.core.img import inject_metadata_pil as _pil_inject
 
     _, out = _pil_inject(img, metadata)
     return out

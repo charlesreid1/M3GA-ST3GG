@@ -14,7 +14,7 @@ would), speak JSON-RPC 2.0 over its stdin/stdout, and assert:
   * every stdout line is valid JSON (no leaked prints or logs)
   * logger output lands on stderr, not stdout, even at --log-level info
 
-We drive the server via `python -m st3ggmcp.server --stdio` rather
+We drive the server via `python -m m3gast3gg.server --stdio` rather
 than the console script so tests don't require an editable install.
 """
 
@@ -27,10 +27,10 @@ from typing import Optional
 
 import pytest
 
-from st3ggmcp.tools import TOOL_EXECUTORS
+from m3gast3gg.mcp import TOOL_EXECUTORS
 
 
-SPAWN_CMD_BASE = [sys.executable, "-m", "st3ggmcp.server", "--stdio"]
+SPAWN_CMD_BASE = [sys.executable, "-m", "m3gast3gg.server", "--stdio"]
 
 
 class StdioClient:
@@ -127,7 +127,7 @@ def test_initialize_returns_serverinfo():
     with StdioClient() as client:
         result = _handshake(client)
         assert "serverInfo" in result
-        assert result["serverInfo"]["name"] == "st3ggmcp"
+        assert result["serverInfo"]["name"] == "m3gast3gg"
 
 
 def test_tools_list_returns_full_registry():

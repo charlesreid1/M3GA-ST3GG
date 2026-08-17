@@ -1,4 +1,4 @@
-"""Tool registry for the st3ggmcp MCP server.
+"""Tool registry for the m3gast3gg MCP server.
 
 Each per-family submodule exports its own `EXECUTORS` and `SCHEMAS` dicts;
 this module merges them into the two dicts server.py consumes. Adding a tool
@@ -10,7 +10,7 @@ from __future__ import annotations
 from . import image, jailbreak, meta, network, text, triage
 
 # Re-export individual executors so callers can still do
-#   `from st3ggmcp.tools import execute_text_encode`
+#   `from m3gast3gg.mcp import execute_text_encode`
 # the way they did before tools.py was split into a package.
 from .image import (  # noqa: F401
     execute_apng_fdat_encode,

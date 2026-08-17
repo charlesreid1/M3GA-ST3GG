@@ -106,7 +106,7 @@ ZWJ  = '‍'  # zero-width joiner        -> delimiter
 # carrier (accepts any ASCII byte); see
 # `jailbreak_core.compose_unicode_tag_jailbreak` for the printable-only
 # prompt-injection subset that piggybacks on an emoji grapheme cluster.
-from unicode_tags import TAG_BASE, TAG_END, encode_tag_run, decode_tag_run
+from m3gast3gg.core.unicode_tags import TAG_BASE, TAG_END, encode_tag_run, decode_tag_run
 
 # Latin -> Cyrillic homoglyphs, matching index.html:7837
 CYRILLIC_HOMOGLYPH_MAP: Dict[str, str] = {

@@ -11,12 +11,12 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from analysis_tools import (
+from m3gast3gg.core.analysis import (
     detect_file_type,
     png_detect_appended_data,
     png_extract_text_chunks,
 )
-from img_core import decode, detect_encoding
+from m3gast3gg.core.img import decode, detect_encoding
 
 
 # ---------- STEG v3 header PNG ----------

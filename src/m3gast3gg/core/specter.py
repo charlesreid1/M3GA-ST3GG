@@ -25,13 +25,13 @@ from typing import Any, Callable, Dict, List, Optional
 import numpy as np
 from PIL import Image
 
-from img_core import DCT_EMBED_POS, _dct_matrix, _luminance
+from m3gast3gg.core.img import DCT_EMBED_POS, _dct_matrix, _luminance
 
 # ---------------------------------------------------------------------------
 # Cryptography — try the real AES-256-GCM module, fall back gracefully.
 # ---------------------------------------------------------------------------
 try:
-    from crypto import HAS_CRYPTO, decrypt_aes_gcm, encrypt_aes_gcm
+    from m3gast3gg.core.crypto import HAS_CRYPTO, decrypt_aes_gcm, encrypt_aes_gcm
 except Exception:  # pragma: no cover — broken system install
     HAS_CRYPTO = False
     def encrypt_aes_gcm(*a, **kw): raise RuntimeError("cryptography unavailable")  # noqa: E704
@@ -355,7 +355,7 @@ def _ghost_encrypt(data: bytes, password: str) -> bytes:
             "Ghost Mode requires the cryptography package. "
             "Install with: pip install cryptography"
         )
-    from crypto import EncryptedPayload as _EP
+    from m3gast3gg.core.crypto import EncryptedPayload as _EP
 
     payload: _EP = encrypt_aes_gcm(data, password)
     # Pack: salt (16) + iv (12) + ciphertext_with_tag
@@ -372,7 +372,7 @@ def _ghost_decrypt(packed: bytes, password: str) -> bytes:
             "Ghost Mode requires the cryptography package. "
             "Install with: pip install cryptography"
         )
-    from crypto import EncryptedPayload as _EP
+    from m3gast3gg.core.crypto import EncryptedPayload as _EP
 
     salt = packed[:16]
     iv = packed[16:28]

@@ -1,13 +1,13 @@
-"""ST3GG MCP server: HTTP and stdio transports.
+"""M3GA-ST3GG MCP server: HTTP and stdio transports.
 
 Run with:
-    stegg-mcp                    # HTTP on port 8765
-    stegg-mcp --port 9000        # HTTP on custom port
-    stegg-mcp-stdio              # stdio (spawned by MCP clients like Claude Code)
+    m3gast3gg-mcp                    # HTTP on port 8765
+    m3gast3gg-mcp --port 9000        # HTTP on custom port
+    m3gast3gg-mcp-stdio              # stdio (spawned by MCP clients like Claude Code)
 
 Or:
-    python -m st3ggmcp.server           # HTTP
-    python -m st3ggmcp.server --stdio   # stdio (same as stegg-mcp-stdio)
+    python -m m3gast3gg.server           # HTTP
+    python -m m3gast3gg.server --stdio   # stdio (same as m3gast3gg-mcp-stdio)
 
 HTTP mode: container-to-container use only. No auth. Bind address defaults to 0.0.0.0.
 Stdio mode: the client launches this process; JSON-RPC over stdin/stdout, logs on stderr.
@@ -36,7 +36,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.types import Receive, Scope, Send
 
-from .tools import TOOL_EXECUTORS, TOOL_SCHEMAS
+from .mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ FIELD_GUIDE_URI = "stegg://field-guide"
 
 
 def build_server() -> Server:
-    server: Server = Server("st3ggmcp")
+    server: Server = Server("m3gast3gg")
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
@@ -138,7 +138,7 @@ async def _run_stdio(log_level: str = "info") -> None:
     )
 
     server = build_server()
-    logger.info("st3ggmcp stdio server starting")
+    logger.info("m3gast3gg stdio server starting")
     logger.info("tools: %s", ", ".join(TOOL_EXECUTORS.keys()))
 
     async with stdio_server() as (read_stream, write_stream):
@@ -150,7 +150,7 @@ async def _run_stdio(log_level: str = "info") -> None:
 
 
 def main_stdio() -> None:
-    """Entry point for `stegg-mcp-stdio`.
+    """Entry point for `m3gast3gg-mcp-stdio`.
 
     Small argument surface -- stdio clients typically launch the process
     directly and don't pass configuration. Log level is the one useful knob.
@@ -169,7 +169,7 @@ def main() -> None:
     parser.add_argument(
         "--stdio",
         action="store_true",
-        help="Run in stdio mode instead of HTTP (equivalent to stegg-mcp-stdio).",
+        help="Run in stdio mode instead of HTTP (equivalent to m3gast3gg-mcp-stdio).",
     )
     args = parser.parse_args()
 
@@ -182,7 +182,7 @@ def main() -> None:
         format="%(asctime)s  %(levelname)-7s %(name)s: %(message)s",
     )
 
-    logger.info("st3ggmcp starting on %s:%d, endpoint /mcp", args.host, args.port)
+    logger.info("m3gast3gg starting on %s:%d, endpoint /mcp", args.host, args.port)
     logger.info("tools: %s", ", ".join(TOOL_EXECUTORS.keys()))
 
     app = build_asgi_app()

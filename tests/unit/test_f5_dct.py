@@ -18,8 +18,8 @@ pytest.importorskip("jpeglib")
 import numpy as np
 from PIL import Image
 
-from f5_core import InvalidJPEG
-from f5_core._dct import load_coeffs, save_coeffs
+from m3gast3gg.core.f5 import InvalidJPEG
+from m3gast3gg.core.f5._dct import load_coeffs, save_coeffs
 
 
 # ---------- Fixtures ----------

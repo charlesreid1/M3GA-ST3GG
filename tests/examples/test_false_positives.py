@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from img_core import decode, detect_encoding
+from m3gast3gg.core.img import decode, detect_encoding
 
 
 def _clean_noise_image(size=200, seed=99):

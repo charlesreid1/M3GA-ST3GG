@@ -12,7 +12,7 @@ Every transform has a canonical form some transport will normalize it to. When
 adding a new transform, document which channels it survives and which
 canonicalize it away — this metadata will eventually drive channel-aware
 obfuscation selection ("give me a chain that survives Slack"). See
-``st3ggmcp/TRANSPORT_MATRIX.md`` for the current terrain map.
+``m3gast3gg/TRANSPORT_MATRIX.md`` for the current terrain map.
 
 Extension
 ---------

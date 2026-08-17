@@ -1855,7 +1855,7 @@ def f5_encode(data: str | bytes, payload: str | bytes, *, password: str) -> byte
     Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.F5Error`
     (or a subclass) on failure.
     """
-    from f5_core import F5Stegg
+    from m3gast3gg.core.f5 import F5Stegg
 
     jpeg_bytes = _to_bytes(data)
     payload_bytes = _payload_to_bytes(payload)
@@ -1871,7 +1871,7 @@ def f5_decode(data: str | bytes, *, password: str) -> bytes:
     Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
     on wrong key or corrupt data.
     """
-    from f5_core import F5Stegg
+    from m3gast3gg.core.f5 import F5Stegg
 
     jpeg_bytes = _to_bytes(data)
     s = F5Stegg(password.encode("utf-8"))
@@ -1886,7 +1886,7 @@ def f5_capacity(data: str | bytes) -> dict:
     Returns a dict with keys ``capacity`` (list, index 1..16), ``coeff_total``,
     ``coeff_large``, ``coeff_zero``, ``coeff_one``, and ``coeff_one_ratio``.
     """
-    from f5_core import F5Stegg
+    from m3gast3gg.core.f5 import F5Stegg
 
     jpeg_bytes = _to_bytes(data)
     # analyse is key-agnostic — a dummy key satisfies the constructor.
@@ -1933,7 +1933,7 @@ def jsteg_encode(data: str | bytes, payload: str | bytes) -> bytes:
     Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.CapacityExceeded`
     if the payload does not fit.
     """
-    from f5_core.jsteg import jsteg_encode as _encode
+    from m3gast3gg.core.f5.jsteg import jsteg_encode as _encode
 
     jpeg_bytes = _to_bytes(data)
     payload_bytes = _payload_to_bytes(payload)
@@ -1948,7 +1948,7 @@ def jsteg_decode(data: str | bytes) -> bytes:
     Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
     if the length prefix is corrupt or the carrier is unmodified.
     """
-    from f5_core.jsteg import jsteg_decode as _decode
+    from m3gast3gg.core.f5.jsteg import jsteg_decode as _decode
 
     return _decode(_to_bytes(data))
 
@@ -1961,7 +1961,7 @@ def jsteg_capacity(data: str | bytes) -> dict:
     Returns a dict with keys ``usable_coefficients``, ``usable_bytes``, and
     ``max_payload_bytes`` (accounting for the 4-byte length prefix).
     """
-    from f5_core.jsteg import jsteg_capacity as _cap
+    from m3gast3gg.core.f5.jsteg import jsteg_capacity as _cap
 
     return _cap(_to_bytes(data))
 

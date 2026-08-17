@@ -20,16 +20,16 @@ import asyncio
 import json
 
 # Import our steg modules
-import img_core
-from img_core import (
+import m3gast3gg.core.img as img_core
+from m3gast3gg.core.img import (
     encode, decode, create_config, calculate_capacity,
     analyze_image, detect_encoding, CHANNEL_PRESETS,
     Channel, StegConfig, EncodingStrategy, _extract_bit_units,
     _bits_array_to_bytes, _generate_pixel_indices
 )
-import crypto
-import matryoshka_core
-from matryoshka_core import (
+import m3gast3gg.core.crypto as crypto
+import m3gast3gg.core.matryoshka as matryoshka_core
+from m3gast3gg.core.matryoshka import (
     MatryoshkaConfig, LayerReport, DecodeLayer,
     encode_nested, decode_nested, capacity_for, plan_nesting,
     is_image_data, extract_file_from_data, VALID_FILE_EXTENSIONS,

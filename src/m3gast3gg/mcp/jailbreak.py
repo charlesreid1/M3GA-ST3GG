@@ -10,8 +10,8 @@ from typing import Any
 
 from PIL import Image
 
-import jailbreak_core
-import transforms_core
+import m3gast3gg.core.jailbreak as jailbreak_core
+import m3gast3gg.core.transforms as transforms_core
 
 from ._common import (
     TOOL_TIMEOUT,

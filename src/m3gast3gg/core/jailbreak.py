@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from PIL import Image
 
-from unicode_tags import (
+from m3gast3gg.core.unicode_tags import (
     TagPayloadError,
     count_tags,
     decode_tag_run,
@@ -374,7 +374,7 @@ def compose_image_jailbreak(
     filename_seed: Optional[int] = None,
 ) -> JailbreakPayload:
     """Create a full image-based jailbreak package in one call."""
-    from img_core import create_config, encode, inject_text_chunk  # local import to avoid cycles
+    from m3gast3gg.core.img import create_config, encode, inject_text_chunk  # local import to avoid cycles
 
     body = _template_body(jailbreak_template)
     payload_bytes = body.encode("utf-8")
@@ -382,7 +382,7 @@ def compose_image_jailbreak(
     if encrypt:
         if not password:
             raise ValueError("password required when encrypt=True")
-        from crypto import encrypt as _encrypt
+        from m3gast3gg.core.crypto import encrypt as _encrypt
         payload_bytes = _encrypt(payload_bytes, password, method="auto")
 
     config = create_config(channels=channels, bits=bits)
@@ -443,7 +443,7 @@ def compose_text_jailbreak(
     produces different output than ``["zalgo", "fullwidth"]``. Callers may
     chain transforms to defeat multiple filter types in one payload, and
     should pick a chain that survives the target transport (see
-    ``st3ggmcp/TRANSPORT_MATRIX.md``).
+    ``m3gast3gg/TRANSPORT_MATRIX.md``).
 
     The v1 interface is ``List[str]`` — bare names, no per-transform
     options. When keyed transforms arrive (Caesar shift, Vigenère key,
@@ -452,8 +452,8 @@ def compose_text_jailbreak(
     not invent a parallel per-transform config mechanism outside this
     parameter.
     """
-    import text_core as _tc
-    import transforms_core as _tx
+    import m3gast3gg.core.text as _tc
+    import m3gast3gg.core.transforms as _tx
 
     body = _template_body(jailbreak_template)
     if obfuscation:
@@ -499,7 +499,7 @@ def compose_unicode_tag_jailbreak(
     constrains the payload to printable ASCII (0x20..0x7E) so it lands as
     valid prompt text on the receiving LLM, and appends the run after a
     base emoji so the payload forms one grapheme cluster with a visible
-    glyph. See ``st3ggmcp/TRANSPORT_MATRIX.md`` for what pipelines survive
+    glyph. See ``m3gast3gg/TRANSPORT_MATRIX.md`` for what pipelines survive
     this technique.
 
     Callers whose template body contains newlines or other control chars
@@ -516,7 +516,7 @@ def compose_unicode_tag_jailbreak(
     ``TagPayloadError``/``ValueError``. Callers are responsible for
     ordering, same philosophy as the "must flatten newlines" rule above.
     """
-    import transforms_core as _tx
+    import m3gast3gg.core.transforms as _tx
 
     body = _template_body(jailbreak_template)
     if obfuscation:
@@ -743,7 +743,7 @@ def detect_injection_filename(filename: str) -> Dict[str, Any]:
 
 def detect_jailbreak_in_chunks(png_data: bytes) -> Dict[str, Any]:
     """Scan PNG text chunks for jailbreak template fingerprints."""
-    from img_core import extract_text_chunks
+    from m3gast3gg.core.img import extract_text_chunks
 
     try:
         chunks = extract_text_chunks(png_data)
@@ -898,7 +898,7 @@ def detect_full_injection_package(
                 # LSB payload attempt
                 try:
                     from PIL import Image as _Img
-                    import img_core as _ic
+                    import m3gast3gg.core.img as _ic
                     img = _Img.open(io.BytesIO(data))
                     lsb = _ic.smart_extract(img, max_bytes=4096)
                     if lsb and lsb.get("data"):

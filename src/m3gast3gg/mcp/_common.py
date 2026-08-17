@@ -1,4 +1,4 @@
-"""Shared helpers for st3ggmcp tool executors.
+"""Shared helpers for m3gast3gg tool executors.
 
 Every tool takes a filesystem `path` (server-local). Encoder tools take an
 `output_path` and write their result to disk. All results are JSON-shaped

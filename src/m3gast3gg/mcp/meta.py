@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import capabilities as caps
+import m3gast3gg.core.capabilities as caps
 
 from ._common import truncate_json
 

@@ -26,10 +26,10 @@ for m in list(sys.modules.keys()):
 from pathlib import Path
 from PIL import Image
 import numpy as np
-from img_core import (StegConfig, Channel, get_channel_preset, encode, decode,
+from m3gast3gg.core.img import (StegConfig, Channel, get_channel_preset, encode, decode,
                        detect_encoding, calculate_capacity)
-from audio_core import audio_lsb_decode
-from analysis_tools import (
+from m3gast3gg.core.audio import audio_lsb_decode
+from m3gast3gg.core.analysis import (
     TOOL_REGISTRY, detect_file_type,
     pcap_decode, zip_decode, tar_decode, gzip_decode,
     sqlite_decode, pdf_decode, jpeg_decode, svg_decode, gif_analysis,

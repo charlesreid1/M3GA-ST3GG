@@ -11,25 +11,25 @@ from PIL import Image
 from typing import Optional
 
 # Import our modules
-from img_core import (
+from m3gast3gg.core.img import (
     encode, decode, encode_text, decode_text,
     create_config, calculate_capacity, analyze_image,
     detect_encoding, CHANNEL_PRESETS, StegConfig, EncodingStrategy
 )
-from crypto import (
+from m3gast3gg.core.crypto import (
     encrypt, decrypt, get_available_methods, crypto_status, HAS_CRYPTO
 )
-from jailbreak_core import (
+from m3gast3gg.core.jailbreak import (
     generate_injection_filename,
     get_filename_template_names as get_template_names,
     get_filename_template_info as get_template_info,
     get_jailbreak_template, get_jailbreak_names,
     create_full_injection_package, JAILBREAK_TEMPLATES,
 )
-from img_core import (
+from m3gast3gg.core.img import (
     inject_metadata_pil, inject_text_chunk, read_png_chunks,
 )
-from transforms_core import zalgo_text, leetspeak
+from m3gast3gg.core.transforms import zalgo_text, leetspeak
 
 # Page config
 st.set_page_config(

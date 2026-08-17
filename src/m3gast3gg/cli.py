@@ -35,7 +35,7 @@ from rich import box
 from PIL import Image
 
 # Import our modules
-from img_core import (
+from m3gast3gg.core.img import (
     encode, decode, create_config, calculate_capacity, analyze_image,
     detect_encoding, CHANNEL_PRESETS, EncodingStrategy,
     dct_encode, dct_decode, dct_capacity, DCT_STRENGTHS,
@@ -43,9 +43,9 @@ from img_core import (
     inject_text_chunk, inject_itxt_chunk, inject_private_chunk,
     read_png_chunks, extract_text_chunks, inject_metadata_pil,
 )
-from analysis_tools import execute_action, list_available_tools
+from m3gast3gg.core.analysis import execute_action, list_available_tools
 try:
-    from specter import (
+    from m3gast3gg.core.specter import (
         specter_lsb_encode, specter_lsb_decode,
         specter_dct_encode, specter_dct_decode,
         parse_pattern, pattern_from_password,
@@ -58,23 +58,23 @@ except Exception:
     SPECTER_DCT_REDUNDANCY = 5
     SPECTER_DCT_STRENGTH = 50
 try:
-    from crypto import encrypt, decrypt, get_available_methods, crypto_status
+    from m3gast3gg.core.crypto import encrypt, decrypt, get_available_methods, crypto_status
 except Exception:
     # Gracefully handle broken cryptography library (e.g., broken system install)
     encrypt = decrypt = None
     def get_available_methods(): return ["none", "xor"]
     def crypto_status(): return "⚠ crypto module unavailable (install cryptography package)"
-from jailbreak_core import (
+from m3gast3gg.core.jailbreak import (
     generate_injection_filename, get_filename_template_names as get_template_names,
     get_jailbreak_template, get_jailbreak_names,
     compose_image_jailbreak, detect_full_injection_package,
 )
-from transforms_core import zalgo_text, leetspeak
-from ascii_art import (
+from m3gast3gg.core.transforms import zalgo_text, leetspeak
+from m3gast3gg.core.ascii_art import (
     BANNER, BANNER_SMALL, STEGOSAURUS_ASCII_SIMPLE, STEGOSAURUS_SMALL,
     STATUS, FOOTER, TAGLINES, section_header, channel_bar, COLORS
 )
-from matryoshka_core import (
+from m3gast3gg.core.matryoshka import (
     MatryoshkaConfig, encode_nested, decode_nested, capacity_for,
     plan_nesting, is_image_data, DecodeLayer, LayerReport,
 )
@@ -703,7 +703,7 @@ def analyze(
 def _run_recursive_scan(image_path: Path):
     """Run smart_scan_recursive on an image and print results."""
     try:
-        from analysis_tools import smart_scan_recursive
+        from m3gast3gg.core.analysis import smart_scan_recursive
     except ImportError:
         warning("analysis_tools.smart_scan_recursive not available")
         return
@@ -1337,7 +1337,7 @@ def f5_capacity_cmd(
 
 # ============== TEXT STEG COMMANDS ==============
 
-import text_core
+import m3gast3gg.core.text as text_core
 
 text_app = typer.Typer(help="🔤 Text steganography: hide/reveal in plain text")
 app.add_typer(text_app, name="text")

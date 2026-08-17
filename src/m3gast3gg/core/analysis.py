@@ -37,8 +37,8 @@ try:
 except ImportError:
     HAS_PIL = False
 
-import text_core
-import audio_core
+import m3gast3gg.core.text as text_core
+import m3gast3gg.core.audio as audio_core
 
 
 # ============== CORE INFRASTRUCTURE ==============
@@ -1796,7 +1796,7 @@ def smart_scan_recursive(image_data: bytes, max_depth: int = 11,
         list describing each discovered layer.
     """
     try:
-        from matryoshka_core import decode_nested, MatryoshkaConfig, is_image_data
+        from m3gast3gg.core.matryoshka import decode_nested, MatryoshkaConfig, is_image_data
         from PIL import Image as PILImage
     except ImportError:
         return {'error': 'matryoshka_core or PIL not available'}
@@ -2470,7 +2470,7 @@ def pcap_decode(data: bytes) -> Dict[str, Any]:
 
     # Also try network_core structured decoder for NETH-framed payloads
     try:
-        from network_core import decode_neth_framed_payload
+        from m3gast3gg.core.network import decode_neth_framed_payload
         nc_result = decode_neth_framed_payload(data)
         if nc_result.get('found'):
             payload = nc_result.get('payload', b'')
@@ -2496,7 +2496,7 @@ def pcap_decode(data: bytes) -> Dict[str, Any]:
 
     # Statistical steganalysis (no framing required)
     try:
-        from network_core import analyze_pcap_summary as _stat_summary
+        from m3gast3gg.core.network import analyze_pcap_summary as _stat_summary
         stat_summary = _stat_summary(data)
         if stat_summary.get('suspicious'):
             results['statistical'] = {
@@ -2535,7 +2535,7 @@ def pcap_decode(data: bytes) -> Dict[str, Any]:
 def _pcap_decode_method(data: bytes, method_name: str, method_value) -> Dict[str, Any]:
     """Shared implementation for per-method PCAP decoders."""
     try:
-        from network_core import decode
+        from m3gast3gg.core.network import decode
     except ImportError:
         return {'found': False, 'error': 'network_core not available'}
     try:
@@ -2561,57 +2561,57 @@ def _pcap_decode_method(data: bytes, method_name: str, method_value) -> Dict[str
 
 
 def pcap_decode_ip_ttl(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'ip_ttl', StegoMethod.IP_TTL)
 
 
 def pcap_decode_ip_id(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'ip_id', StegoMethod.IP_ID)
 
 
 def pcap_decode_tcp_isn(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'tcp_isn', StegoMethod.TCP_ISN)
 
 
 def pcap_decode_tcp_timestamp(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'tcp_timestamp', StegoMethod.TCP_TIMESTAMP)
 
 
 def pcap_decode_tcp_window(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'tcp_window', StegoMethod.TCP_WINDOW)
 
 
 def pcap_decode_tcp_urgent(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'tcp_urgent', StegoMethod.TCP_URGENT)
 
 
 def pcap_decode_icmp_payload(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'icmp_payload', StegoMethod.ICMP_PAYLOAD)
 
 
 def pcap_decode_dns_label(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'dns_label', StegoMethod.DNS_LABEL)
 
 
 def pcap_decode_dns_txt(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'dns_txt', StegoMethod.DNS_TXT)
 
 
 def pcap_decode_http_header(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'http_header', StegoMethod.HTTP_HEADER)
 
 
 def pcap_decode_covert_timing(data: bytes) -> Dict[str, Any]:
-    from network_core import StegoMethod
+    from m3gast3gg.core.network import StegoMethod
     return _pcap_decode_method(data, 'covert_timing', StegoMethod.COVERT_TIMING)
 
 
@@ -2636,7 +2636,7 @@ def pcap_detect_statistical(data: bytes) -> Dict[str, Any]:
         return {'found': False, 'reason': 'Not PCAP'}
 
     try:
-        from network_core import analyze_pcap_summary as _stat_summary
+        from m3gast3gg.core.network import analyze_pcap_summary as _stat_summary
         summary = _stat_summary(data)
     except ImportError:
         return {'found': False, 'error': 'network_core not available'}
@@ -3181,7 +3181,7 @@ def _register_all_tools():
 
     # Jailbreak / prompt-injection detectors (bytes-shaped wrappers).
     try:
-        from jailbreak_core import (
+        from m3gast3gg.core.jailbreak import (
             detect_injection_filename_bytes,
             detect_jailbreak_in_chunks_bytes,
             detect_jailbreak_payload_bytes,
@@ -3196,7 +3196,7 @@ def _register_all_tools():
 
     # SPECTER channel-cipher detection
     try:
-        from specter import specter_detect as _specter_detect
+        from m3gast3gg.core.specter import specter_detect as _specter_detect
         TOOL_REGISTRY.register('godmode_detect', _specter_detect)
     except Exception:
         pass

@@ -53,7 +53,7 @@ async def execute_network_encode(
         return err
 
     def work():
-        from network_core import (
+        from m3gast3gg.core.network import (
             NetworkStegConfig,
             StegoMethod,
             WireFormat,
@@ -96,7 +96,7 @@ async def execute_network_encode(
 
         out.write_bytes(pcap_bytes)
 
-        from network_core import calculate_capacity
+        from m3gast3gg.core.network import calculate_capacity
 
         cap = calculate_capacity(config, max_packets=1000)
         return {
@@ -138,7 +138,7 @@ async def execute_network_decode(
         return err
 
     def work():
-        from network_core import StegoMethod, decode
+        from m3gast3gg.core.network import StegoMethod, decode
 
         meth = None
         if method is not None:
@@ -176,7 +176,7 @@ async def execute_network_methods(**_kw) -> str:
     compatible wire formats."""
 
     def work():
-        from network_core import list_methods
+        from m3gast3gg.core.network import list_methods
         return {"methods": list_methods()}
 
     try:
@@ -210,7 +210,7 @@ async def execute_network_detect(
         return err
 
     def work():
-        from network_core import analyze_pcap_summary
+        from m3gast3gg.core.network import analyze_pcap_summary
         summary = analyze_pcap_summary(data)
         summary["file"] = meta
         return summary

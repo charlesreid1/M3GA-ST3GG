@@ -24,7 +24,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from matryoshka_core import (
+from m3gast3gg.core.matryoshka import (
     MatryoshkaConfig,
     LayerReport,
     DecodeLayer,
@@ -618,7 +618,7 @@ class TestAutoDetect:
     def test_smart_scan_recursive_finds_layers(self, medium_carrier, text_payload):
         """Encoded output is detected by smart_scan_recursive."""
         try:
-            from analysis_tools import smart_scan_recursive
+            from m3gast3gg.core.analysis import smart_scan_recursive
         except ImportError:
             pytest.skip("analysis_tools not available")
 
@@ -633,7 +633,7 @@ class TestAutoDetect:
     def test_smart_scan_recursive_plain_image(self, medium_carrier):
         """Plain image with no stego should not report matryoshka layers."""
         try:
-            from analysis_tools import smart_scan_recursive
+            from m3gast3gg.core.analysis import smart_scan_recursive
         except ImportError:
             pytest.skip("analysis_tools not available")
 

@@ -33,8 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import f5_core.jsteg as jsteg
-import text_core
+import m3gast3gg.core.f5.jsteg as jsteg
+import m3gast3gg.core.text as text_core
 
 # ---------------------------------------------------------------------------
 # paths

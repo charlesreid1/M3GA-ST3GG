@@ -33,8 +33,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
-import img_core
-from img_core import (
+import m3gast3gg.core.img as img_core
+from m3gast3gg.core.img import (
     HEADER_SIZE,
     Channel,
     StegConfig,
@@ -50,7 +50,7 @@ from img_core import (
 # guard against missing installations in library contexts).
 # ---------------------------------------------------------------------------
 try:
-    import crypto as _crypto
+    import m3gast3gg.core.crypto as _crypto
 
     HAS_CRYPTO = True
 except Exception:  # pragma: no cover

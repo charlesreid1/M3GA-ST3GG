@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from analysis_tools import detect_file_type
+from m3gast3gg.core.analysis import detect_file_type
 
 PCAP_FILES = [
     "example_hidden.pcap",
@@ -33,7 +33,7 @@ def test_pcap_file_type_detected(examples_dir, filename):
 def test_pcap_decode_via_registry(examples_dir, filename):
     """The `pcap_decode` tool should return a result (success or failure) for
     every PCAP without raising."""
-    from analysis_tools import execute_action
+    from m3gast3gg.core.analysis import execute_action
     path = examples_dir / filename
     if not path.exists():
         pytest.skip(f"{filename} not present")
@@ -67,7 +67,7 @@ _XFAIL_TOOLS = {"pcap_decode_covert_timing"}
 
 @pytest.mark.parametrize(("filename", "tool"), PCAP_METHOD_MAP)
 def test_pcap_per_method_decoder_extracts_plinian(examples_dir, plinian, filename, tool):
-    from analysis_tools import execute_action
+    from m3gast3gg.core.analysis import execute_action
 
     path = examples_dir / filename
     if not path.exists():

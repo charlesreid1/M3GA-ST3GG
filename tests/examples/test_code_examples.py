@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from analysis_tools import detect_base64, detect_hex_strings, detect_unicode_steg
+from m3gast3gg.core.analysis import detect_base64, detect_hex_strings, detect_unicode_steg
 
 
 CODE_FILES = [

@@ -10,11 +10,11 @@ from typing import Any
 
 from PIL import Image
 
-import analysis_tools as at
-import audio_core
-import img_core
-import metadata_core as _metadata
-import pdf_core
+import m3gast3gg.core.analysis as at
+import m3gast3gg.core.audio as audio_core
+import m3gast3gg.core.img as img_core
+import m3gast3gg.core.metadata as _metadata
+import m3gast3gg.core.pdf as pdf_core
 
 from ._common import (
     CHANNEL_PRESETS,

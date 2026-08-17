@@ -7,8 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import analysis_tools as at
-import text_core
+import m3gast3gg.core.analysis as at
+import m3gast3gg.core.text as text_core
 
 from ._common import TOOL_TIMEOUT, resolve_text_input, run_sync, read_bytes, truncate_json
 

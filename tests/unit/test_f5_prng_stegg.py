@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from f5_core._prng_stegg import StegPRNG, _pool_size
+from m3gast3gg.core.f5._prng_stegg import StegPRNG, _pool_size
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "f5" / "prng_stegg_vectors.json"

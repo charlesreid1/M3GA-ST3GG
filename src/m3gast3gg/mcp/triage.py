@@ -21,7 +21,7 @@ from typing import Any
 
 from PIL import Image
 
-import analysis_tools as at
+import m3gast3gg.core.analysis as at
 
 from ._common import TOOL_TIMEOUT, read_bytes, run_sync, truncate_json
 
