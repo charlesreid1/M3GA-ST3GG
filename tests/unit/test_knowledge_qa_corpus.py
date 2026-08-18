@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from st3ggmcp import records
+from m3gast3gg import records
 
 
 RECORDS_DIR = Path(__file__).resolve().parents[2] / "knowledge" / "records"

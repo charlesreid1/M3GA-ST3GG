@@ -13,7 +13,7 @@ import base64
 
 import pytest
 
-import crypto
+import m3gast3gg.core.crypto as crypto
 
 pytestmark = pytest.mark.pipeline
 

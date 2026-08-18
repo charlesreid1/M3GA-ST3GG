@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from f5_core._matrix import analyze, embed_coefficients, extract_raw
-from f5_core._framing import stegg_unframe
-from f5_core._prng_stegg import StegPRNG
+from m3gast3gg.core.f5._matrix import analyze, embed_coefficients, extract_raw
+from m3gast3gg.core.f5._framing import stegg_unframe
+from m3gast3gg.core.f5._prng_stegg import StegPRNG
 
 
 FIX = Path(__file__).parent / "fixtures" / "f5"
@@ -148,7 +148,7 @@ def test_extract_rejects_bogus_length():
     was extracted — extract must raise (or at least not return the
     real payload).
     """
-    from f5_core._errors import ExtractionFailed
+    from m3gast3gg.core.f5._errors import ExtractionFailed
 
     coeffs = _xorshift32_stream(0xcafebabe, 64 * 128, dc_zero=True)
     framed = bytes([16, 0]) + b"sixteen-bytes!!!"

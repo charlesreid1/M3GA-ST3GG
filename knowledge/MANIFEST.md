@@ -48,6 +48,13 @@ ST3GG acts on that isn't yet tied to a primary source or a first-party
 measurement. Read it before adding a record whose provenance is thin —
 you may already know the fix.
 
+## Packaging
+
+This directory is force-included into the wheel as
+`m3gast3gg._knowledge` (see `pyproject.toml`). Adding a new record or
+prose file requires no packaging change — the loader resolves it either
+from the source tree (dev) or from the installed package data (wheel).
+
 ## Adding a record
 
 1. Author the entry in the correct `records/*.json` category file.

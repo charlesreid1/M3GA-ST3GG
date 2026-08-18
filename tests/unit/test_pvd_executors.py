@@ -1,6 +1,6 @@
 """Integration tests for the PVD MCP tool executors.
 
-Covers the three executors exposed by ``st3ggmcp.tools.image``:
+Covers the three executors exposed by ``m3gast3gg.mcp.image``:
   * ``stegg_pvd_capacity``
   * ``stegg_pvd_encode``
   * ``stegg_pvd_decode``
@@ -20,8 +20,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from st3ggmcp.tools import TOOL_EXECUTORS, TOOL_SCHEMAS
-from st3ggmcp.tools.image import (
+from m3gast3gg.mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
+from m3gast3gg.mcp.image import (
     execute_pvd_capacity,
     execute_pvd_decode,
     execute_pvd_encode,

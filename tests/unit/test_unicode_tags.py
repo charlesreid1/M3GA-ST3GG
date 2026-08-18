@@ -6,7 +6,7 @@ import itertools
 
 import pytest
 
-from unicode_tags import (
+from m3gast3gg.core.unicode_tags import (
     TAG_BASE,
     TAG_END,
     TAG_PRINTABLE_HI,

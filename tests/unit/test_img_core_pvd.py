@@ -25,8 +25,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-import img_core
-from img_core import PVD_RANGES, find_pvd_range
+import m3gast3gg.core.img as img_core
+from m3gast3gg.core.img import PVD_RANGES, find_pvd_range
 
 FIXTURE = Path(__file__).parent / "fixtures" / "pvd" / "js_reference.json"
 

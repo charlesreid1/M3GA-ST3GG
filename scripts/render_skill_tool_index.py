@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the tool-index block inside skill/reference docs from TOOL_SCHEMAS.
 
-The MCP server owns the schemas (in `st3ggmcp/tools/`); the skill docs need to
+The MCP server owns the schemas (in `m3gast3gg/mcp/`); the skill docs need to
 mirror them or the model reads a stale menu. Rather than hand-syncing, this
 script imports the live `TOOL_SCHEMAS` and rewrites the section fenced by
 
@@ -30,10 +30,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-from st3ggmcp.tools import image, jailbreak, knowledge, meta, network, text, triage  # noqa: E402
+from m3gast3gg.mcp import image, jailbreak, knowledge, meta, network, text, triage  # noqa: E402
 
 BEGIN_FENCE = "<!-- BEGIN autogen: tool index -->"
 END_FENCE = "<!-- END autogen: tool index -->"

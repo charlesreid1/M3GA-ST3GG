@@ -32,15 +32,16 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-from st3ggmcp import records  # noqa: E402
+from m3gast3gg import records  # noqa: E402
 
 BEGIN_FENCE = "<!-- BEGIN autogen: transport matrix -->"
 END_FENCE = "<!-- END autogen: transport matrix -->"
 
-TARGET = REPO_ROOT / "st3ggmcp" / "TRANSPORT_MATRIX.md"
+TARGET = REPO_ROOT / "src" / "m3gast3gg" / "TRANSPORT_MATRIX.md"
 RECORDS_DIR = REPO_ROOT / "knowledge" / "records"
 
 # Column order — Slack triple first (the most-tested), then image-heavy

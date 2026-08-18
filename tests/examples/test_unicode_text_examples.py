@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from analysis_tools import (
+from m3gast3gg.core.analysis import (
     detect_capitalization_steg,
     detect_cjk_homoglyph_steg,
     detect_combining_mark_steg,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from analysis_tools import FileType, detect_file_type
+from m3gast3gg.core.analysis import FileType, detect_file_type
 
 CASES = [
     # (label, header_bytes, expected FileType)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import capabilities as caps
+import m3gast3gg.core.capabilities as caps
 
 
 @pytest.fixture(autouse=True)

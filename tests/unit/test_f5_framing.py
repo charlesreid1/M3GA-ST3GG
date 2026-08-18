@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from f5_core._framing import MAX_PAYLOAD, stegg_frame, stegg_unframe
+from m3gast3gg.core.f5._framing import MAX_PAYLOAD, stegg_frame, stegg_unframe
 
 
 @pytest.mark.parametrize("size", [0, 1, 100, 32767, 32768, 32769, 100_000, MAX_PAYLOAD])

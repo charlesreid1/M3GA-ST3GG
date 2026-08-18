@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from st3ggmcp.tools import TOOL_EXECUTORS, TOOL_SCHEMAS
-from st3ggmcp.tools.image import (
+from m3gast3gg.mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
+from m3gast3gg.mcp.image import (
     execute_f5_encode,
     execute_f5_decode,
     execute_f5_capacity,

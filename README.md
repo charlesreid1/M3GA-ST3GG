@@ -152,8 +152,8 @@ The next frontier of steganography is **agent-to-agent covert communication** an
 **Use ST3GG as a Python library in your agent pipeline:**
 
 ```python
-from img_core import encode, decode, detect_encoding, StegConfig, get_channel_preset
-from analysis_tools import detect_unicode_steg, detect_file_type, TOOL_REGISTRY
+from m3gast3gg.core.img import encode, decode, detect_encoding, StegConfig, get_channel_preset
+from m3gast3gg.core.analysis import detect_unicode_steg, detect_file_type, TOOL_REGISTRY
 from PIL import Image
 
 # Encode a hidden payload into an image
@@ -208,7 +208,7 @@ An attacker would need to know the channel pattern, the password for unscramblin
 
 ### Matryoshka Mode — Recursive Nesting
 
-Hide images within images within images — tested to **11 layers deep**. Encode nested payloads from the CLI (`stegg matryoshka encode`), decode recursively (`stegg matryoshka decode`), or auto-detect nested layers in any image with `stegg analyze --recursive`. The library API (`matryoshka_core`) is importable for scripting. Russian nesting dolls, but for secrets.
+Hide images within images within images — tested to **11 layers deep**. Encode nested payloads from the CLI (`stegg matryoshka encode`), decode recursively (`stegg matryoshka decode`), or auto-detect nested layers in any image with `stegg analyze --recursive`. The library API (`m3gast3gg.core.matryoshka`) is importable for scripting. Russian nesting dolls, but for secrets.
 
 ### DCT Mode — Compression Resistant
 
@@ -278,7 +278,7 @@ git clone git@github.com:charlesreid1/M3GA-ST3GG.git
 cd M3GA-ST3GG
 python3 -m venv venv
 source venv/bin/activate
-pip install -e '.[all]'       # or '.[mcp]' / bare '-e .' for core only
+pip install -e '.[all]'       # or bare `-e .` for core CLI + MCP servers only
 ```
 
 Now you have `stegg` in your terminal:
@@ -300,8 +300,8 @@ stegg encode image.png "{SPECTER:ENABLED}" -o stego.png
 ### Browser (No Install)
 
 ```bash
-# Just open index.html — that's it. No server needed.
-open index.html
+# Just open web/index.html — that's it. No server needed.
+open web/index.html
 ```
 
 Everything runs 100% client-side. No data ever leaves your machine.
@@ -323,7 +323,7 @@ pip install 'stegg[all]'
 stegg --help          # Interactive CLI (Rich output)
 stegg --json <cmd>    # Same CLI, JSON output — subprocess-friendly for agents
 stegg-web             # Browser UI (requires the [web] extra — see INSTALL.md)
-stegg-mcp             # MCP server for AI agents (requires the [mcp] extra — see INSTALL.md)
+m3gast3gg-mcp         # MCP server for AI agents (HTTP; `-stdio` variant also on PATH)
 ```
 
 ### AI Agent Integration
@@ -337,7 +337,7 @@ stegg --json decode-cmd -i stegged.png
 stegg --json analyze suspect.png --full
 
 # MCP server (Streamable HTTP by default, stdio also available — results go into agent context)
-stegg-mcp
+m3gast3gg-mcp
 ```
 
 Five docs describe the agent surface. Each has a different audience and a different loading moment — don't conflate them:
@@ -347,7 +347,7 @@ Five docs describe the agent surface. Each has a different audience and a differ
 | [`AGENTS.md`](AGENTS.md) | Repo orientation, install, entry-point framing, ground rules | An agent dropped into the repo to modify code |
 | [`skills/stegg-cli/SKILL.md`](skills/stegg-cli/SKILL.md) | When-to-fire triggers + invocation recipes for the subprocess CLI | The host's skill picker, before touching the repo |
 | [`skills/stegg-stego/SKILL.md`](skills/stegg-stego/SKILL.md) + [`REFERENCE.md`](skills/stegg-stego/REFERENCE.md) | When-to-fire triggers, tool-selection heuristics, workflow recipes for the MCP server (SKILL.md); exhaustive per-tool spec (REFERENCE.md) | The host's skill picker (SKILL.md); the agent mid-session when it needs argument tables (REFERENCE.md) |
-| [`st3ggmcp/field_guide.md`](st3ggmcp/field_guide.md) | ST3GG persona, mode gate, dispatch tables, verdict semantics, response format (~290 lines; the technique catalog / capacity numbers / transport-survival tables / pattern-diagnosis snippets live in the KR — cite via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_search_records`) | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
+| [`src/m3gast3gg/field_guide.md`](src/m3gast3gg/field_guide.md) | ST3GG persona, mode gate, dispatch tables, verdict semantics, response format (~290 lines; the technique catalog / capacity numbers / transport-survival tables / pattern-diagnosis snippets live in the KR — cite via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_search_records`) | An agent about to analyze a file, fetched on-demand via the `stegg://field-guide` MCP resource |
 | [`knowledge/`](knowledge/) (records + prose corpus) | Cited numeric facts (bits/pixel, survival cells, capacity formulas, bibliography) and split-per-topic prose (`README` / `reference` / `walkthrough` / `recognition` / `history`) | An agent that needs a citation-backed answer, fetched on-demand via `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg://<topic>/<name>` |
 
 For the full audience-and-when-read matrix, plus the rule about which doc owns what, see [`AGENTS.md#docs-map`](AGENTS.md#docs-map). To make the skills discoverable in Claude Code, follow the symlink recipe in [`AGENTS.md#install-the-skills`](AGENTS.md#install-the-skills).
@@ -401,8 +401,8 @@ ST3GG ships with **100+ pre-encoded example files** spanning every technique —
 # Regenerate all examples
 python examples/generate_examples.py
 
-# Run the full test suite (200+ tests)
-python test_examples.py
+# Run the pytest suite
+pytest -q -m "not slow"
 ```
 
 See [`examples/README.md`](examples/README.md) for the full catalog.
@@ -411,56 +411,45 @@ See [`examples/README.md`](examples/README.md) for the full catalog.
 
 ## ⊰ Project Structure ⊱
 
+Src-layout single package `m3gast3gg` under `src/`. Core steganography library and the MCP server ship together in one wheel.
+
 ```
-ST3GG/
-├── index.html              # Browser UI (100% client-side)
-├── img_core.py             # Core LSB encoding/decoding engine
-├── crypto.py               # AES-256-GCM + XOR encryption
-├── analysis_tools.py       # 200+ detection & analysis functions
-├── cli.py                  # Command-line interface
-├── webui.py                # Web UI (NiceGUI)
-├── app.py                  # Core application logic
-├── transforms_core.py      # Pure text transforms (zalgo, leetspeak, fullwidth)
-├── text_core.py            # 15 text/emoji stego methods
-├── audio_core.py           # WAV LSB, silence-interval, MIDI SysEx
-├── network_core.py         # PCAP-based covert channels
-├── matryoshka_core.py      # Recursive nested-image steg
-├── jailbreak_core.py       # Prompt-injection composers + detectors
-├── ascii_art.py            # Terminal art & animations
-├── st3ggmcp/               # HTTP + stdio MCP server package
-│   ├── server.py           #   ASGI app + entry point
-│   ├── records.py          #   Typed-record loader (strict load-time validation)
-│   ├── tools/              #   Per-family tool modules (image / text / triage /
-│   │                       #     network / jailbreak / knowledge / meta)
-│   ├── field_guide.md      #   ST3GG persona + heuristics + mode gate (~290 lines)
-│   └── TRANSPORT_MATRIX.md #   Transport survival table — generated from
-│                           #     knowledge/records/survival.json by
-│                           #     scripts/render_transport_matrix.py
-├── knowledge/              # Typed KR + prose corpus (see below)
-│   ├── MANIFEST.md
-│   ├── known-unknowns.md   #   Running audit of claims not yet tied to a
-│   │                       #     primary source (Tier-N fill priorities)
-│   ├── records/            #   *.json — bibliography, techniques, transports,
-│   │                       #     survival, detectors, signatures, myths,
-│   │                       #     capacity_models, external_tools, ctf_genres,
-│   │                       #     layers, carrier_formats
-│   └── <topic>/            #   Prose corpus. Topic README + optional
-│                           #     <subtopic>/{README,reference,walkthrough,
-│                           #     recognition}.md deep splits; exposed as
-│                           #     MCP resources at stegg://<topic>/<name>
-├── scripts/                # Doc-generation helpers
-│   ├── render_skill_tool_index.py    #   syncs skills/*.md tool tables to TOOL_SCHEMAS
-│   └── render_transport_matrix.py    #   regenerates TRANSPORT_MATRIX.md from survival.json
-├── skills/                 # Agent skill definitions
-│   ├── stegg-cli/SKILL.md
-│   └── stegg-stego/{SKILL,REFERENCE}.md
-├── tests/                  # pytest suite (round-trips, detectors, KR gold-standard Q/A)
-├── examples/               # 100+ pre-encoded example files
-│   ├── generate_examples.py
-│   └── README.md
-├── requirements.txt
-└── pyproject.toml
+M3GA-ST3GG/
+├── src/m3gast3gg/            # the package
+│   ├── __main__.py           # `m3gast3gg-mcp` entry point
+│   ├── server.py             # ASGI MCP app (HTTP + stdio)
+│   ├── cli.py                # `stegg` CLI (Rich TUI; `--json` for machine output)
+│   ├── records.py            # typed-record KR loader (strict load-time validation)
+│   ├── field_guide.md        # served as MCP resource `stegg://field-guide`
+│   ├── TRANSPORT_MATRIX.md   # delivery-channel survival notes (matrix autogen'd from survival.json)
+│   ├── core/                 # steganography library
+│   │   ├── img.py            # image LSB encode/decode + capacity math
+│   │   ├── text.py           # text/emoji encode/decode (14 methods)
+│   │   ├── analysis.py       # 264+ detection/analysis functions
+│   │   ├── crypto.py         # optional AES-256-GCM
+│   │   ├── transforms.py     # zalgo/leetspeak/fullwidth for pre-obfuscation
+│   │   ├── jailbreak.py      # multi-vector prompt-injection composer
+│   │   ├── audio.py, network.py, pdf.py, metadata.py, matryoshka.py, …
+│   │   └── f5/               # F5 JPEG DCT (Python port of the JS reference)
+│   ├── mcp/                  # per-family MCP tools (image/text/network/…)
+│   │   └── knowledge.py      #   `stegg_lookup_*` / `stegg_verify_*` / lore tools
+│   └── webui/                # optional NiceGUI UI (`stegg-web`, [web] extra)
+│
+├── web/                      # browser Text Lab + F5 JPEG (legacy, frozen)
+│   └── index.html            # 100% client-side; open directly, no server
+│
+├── tests/                    # pytest suite (round-trips, detectors, KR gold-standard Q/A + adversarial traps)
+├── examples/                 # 100+ pre-encoded fixtures + generate_examples.py
+├── transport_probes/slack/   # delivery-channel probe harness + results
+├── scripts/                  # doc-generation helpers (render_skill_tool_index.py, render_transport_matrix.py)
+├── skills/, docs/
+├── knowledge/                # two-layer corpus (typed KR + prose); wheel force-includes it as `m3gast3gg._knowledge`
+├── pyproject.toml            # hatchling, src-layout
+├── README.md, INSTALL.md, AGENTS.md, LICENSE
+├── plan-knowledge-base.md    # motivation + tiered fill plan for the KR
 ```
+
+See [AGENTS.md](AGENTS.md) for the full layout with per-module notes.
 
 ## ⊰ Knowledge Base ⊱
 
@@ -600,13 +589,10 @@ See [`knowledge/MANIFEST.md`](knowledge/MANIFEST.md), [`knowledge/records/README
 PRs are welcome! Whether it's new steganographic techniques, better detection algorithms, or entirely new modalities.
 
 ```bash
-# Run the comprehensive test suite (568 tests)
-python test_comprehensive.py
+# Run the pytest suite
+pytest -q -m "not slow"
 
-# Run example file tests
-python test_examples.py
-
-# Regenerate all 109 example files
+# Regenerate all example files
 python examples/generate_examples.py
 ```
 

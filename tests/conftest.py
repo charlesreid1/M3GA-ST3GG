@@ -1,16 +1,14 @@
-"""Shared pytest fixtures and constants for the st3gg suite.
+"""Shared pytest fixtures and constants for the m3gast3gg suite.
 
-The project keeps its module code at the repo root (no `src/` layout), so
-this file also ensures the repo root is on `sys.path` for every collected
-test — without it, `import img_core` fails when pytest is invoked from a
-different working directory.
+The package lives under `src/` (hatchling src-layout); `pyproject.toml` sets
+`pythonpath = ["src"]` so pytest can import `m3gast3gg` from any working
+directory. This file only defines fixtures and constants.
 """
 
 from __future__ import annotations
 
 import io
 import os
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -19,8 +17,6 @@ from PIL import Image
 
 # Repo root: parent of the tests/ dir.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 
 EXAMPLES_DIR = REPO_ROOT / "examples"
@@ -37,8 +33,8 @@ ORIGINAL_SECRET = "STEGOSAURUS WRECKS - Hidden message found! 🦕"
 
 def _crypto_available() -> bool:
     try:
-        import crypto  # noqa: F401
-        from crypto import HAS_CRYPTO
+        import m3gast3gg.core.crypto as crypto  # noqa: F401
+        from m3gast3gg.core.crypto import HAS_CRYPTO
         return bool(HAS_CRYPTO)
     except Exception:
         return False

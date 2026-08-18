@@ -1,0 +1,2453 @@
+"""
+STEGOSAURUS WRECKS - Core Steganography Engine v3.0
+Ultimate LSB steganography with vectorized operations and robust encoding
+
+Features:
+- Vectorized numpy operations (10-100x faster)
+- Self-describing header format with magic bytes
+- CRC32 checksum for data integrity
+- Multiple encoding strategies
+- Auto-detection of encoding parameters
+"""
+
+import io
+import zlib
+import struct
+import hashlib
+import secrets
+from pathlib import Path
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
+from typing import Tuple, List, Optional, Union, Dict, Any
+from enum import Enum, IntEnum
+from dataclasses import dataclass, field
+import numpy as np
+
+
+# ============== CONSTANTS ==============
+
+MAGIC_BYTES = b'STEG'  # Magic signature
+FORMAT_VERSION = 3     # Current format version
+HEADER_SIZE = 32       # Fixed header size in bytes
+
+class Channel(IntEnum):
+    """Color channels - IntEnum for direct numpy indexing"""
+    R = 0
+    G = 1
+    B = 2
+    A = 3
+
+
+class EncodingStrategy(Enum):
+    """Different strategies for embedding data"""
+    SEQUENTIAL = "sequential"      # Fill pixels in order
+    INTERLEAVED = "interleaved"    # Cycle through channels per pixel
+    SPREAD = "spread"              # Spread across image evenly
+    RANDOMIZED = "randomized"      # Pseudo-random order (seeded)
+
+
+# ============== CONFIGURATION ==============
+
+@dataclass
+class StegConfig:
+    """Configuration for steganography operations"""
+    channels: List[Channel] = field(default_factory=lambda: [Channel.R, Channel.G, Channel.B])
+    bits_per_channel: int = 1
+    bit_offset: int = 0
+    use_compression: bool = True
+    strategy: EncodingStrategy = EncodingStrategy.INTERLEAVED
+    seed: Optional[int] = None  # For randomized strategy
+
+    @property
+    def bits_per_pixel(self) -> int:
+        return len(self.channels) * self.bits_per_channel
+
+    @property
+    def channel_indices(self) -> np.ndarray:
+        return np.array([c.value for c in self.channels], dtype=np.uint8)
+
+    def to_bytes(self) -> bytes:
+        """Serialize config to bytes for header"""
+        flags = 0
+        flags |= (1 << 0) if self.use_compression else 0
+        flags |= (self.strategy.value == "interleaved") << 1
+        flags |= (self.strategy.value == "spread") << 2
+        flags |= (self.strategy.value == "randomized") << 3
+
+        channel_mask = sum(1 << c.value for c in self.channels)
+
+        return struct.pack(
+            '>BBBB I',
+            channel_mask,
+            self.bits_per_channel,
+            self.bit_offset,
+            flags,
+            self.seed or 0
+        )
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> 'StegConfig':
+        """Deserialize config from bytes"""
+        channel_mask, bits_per_ch, bit_offset, flags, seed = struct.unpack('>BBBB I', data)
+
+        channels = [Channel(i) for i in range(4) if channel_mask & (1 << i)]
+        use_compression = bool(flags & 1)
+
+        if flags & (1 << 3):
+            strategy = EncodingStrategy.RANDOMIZED
+        elif flags & (1 << 2):
+            strategy = EncodingStrategy.SPREAD
+        elif flags & (1 << 1):
+            strategy = EncodingStrategy.INTERLEAVED
+        else:
+            strategy = EncodingStrategy.SEQUENTIAL
+
+        return cls(
+            channels=channels,
+            bits_per_channel=bits_per_ch,
+            bit_offset=bit_offset,
+            use_compression=use_compression,
+            strategy=strategy,
+            seed=seed if seed else None
+        )
+
+
+# Channel presets
+CHANNEL_PRESETS = {
+    "R": [Channel.R],
+    "G": [Channel.G],
+    "B": [Channel.B],
+    "A": [Channel.A],
+    "RG": [Channel.R, Channel.G],
+    "RB": [Channel.R, Channel.B],
+    "RA": [Channel.R, Channel.A],
+    "GB": [Channel.G, Channel.B],
+    "GA": [Channel.G, Channel.A],
+    "BA": [Channel.B, Channel.A],
+    "RGB": [Channel.R, Channel.G, Channel.B],
+    "RGA": [Channel.R, Channel.G, Channel.A],
+    "RBA": [Channel.R, Channel.B, Channel.A],
+    "GBA": [Channel.G, Channel.B, Channel.A],
+    "RGBA": [Channel.R, Channel.G, Channel.B, Channel.A],
+}
+
+
+def get_channel_preset(name: str) -> List[Channel]:
+    """Get channel list from preset name"""
+    return CHANNEL_PRESETS.get(name.upper(), [Channel.R, Channel.G, Channel.B])
+
+
+def derive_magic(password: str) -> bytes:
+    """Derive 4-byte magic from password using HMAC-SHA256.
+
+    When a password is provided, the STEG header magic is derived from
+    the password instead of using the fixed 'STEG' bytes. This means
+    the header is undetectable without the password — no fixed signature
+    to scan for.
+    """
+    import hmac
+    return hmac.new(password.encode('utf-8'), b'ST3GG-MAGIC-V3', 'sha256').digest()[:4]
+
+
+# ============== HEADER FORMAT ==============
+"""
+Header Format (32 bytes):
+  [0:4]   - Magic bytes: 'STEG'
+  [4:5]   - Version: uint8
+  [5:6]   - Channel mask: uint8 (bit flags for R,G,B,A)
+  [6:7]   - Bits per channel: uint8
+  [7:8]   - Bit offset: uint8
+  [8:9]   - Flags: uint8 (compression, strategy bits)
+  [9:12]  - Reserved: 3 bytes
+  [12:16] - Seed: uint32 (for randomized strategy)
+  [16:20] - Payload length: uint32
+  [20:24] - Original length: uint32 (before compression)
+  [24:28] - CRC32: uint32
+  [28:32] - Reserved: 4 bytes
+"""
+
+@dataclass
+class StegHeader:
+    """Header for encoded data"""
+    version: int = FORMAT_VERSION
+    config: StegConfig = field(default_factory=StegConfig)
+    payload_length: int = 0
+    original_length: int = 0
+    crc32: int = 0
+
+    def to_bytes(self, password: Optional[str] = None) -> bytes:
+        """Serialize header to 32 bytes.
+
+        If password is provided, the magic bytes are derived from the password
+        using HMAC-SHA256, making the header undetectable without the password.
+        """
+        config_bytes = self.config.to_bytes()
+
+        header = bytearray(HEADER_SIZE)
+        header[0:4] = derive_magic(password) if password else MAGIC_BYTES
+        header[4] = self.version
+        header[5:13] = config_bytes
+        struct.pack_into('>I', header, 16, self.payload_length)
+        struct.pack_into('>I', header, 20, self.original_length)
+        struct.pack_into('>I', header, 24, self.crc32)
+
+        return bytes(header)
+
+    @classmethod
+    def from_bytes(cls, data: bytes, password: Optional[str] = None) -> 'StegHeader':
+        """Deserialize header from bytes.
+
+        If password is provided, validates against password-derived magic.
+        Otherwise validates against the fixed 'STEG' magic bytes.
+        """
+        if len(data) < HEADER_SIZE:
+            raise ValueError(f"Header too short: {len(data)} < {HEADER_SIZE}")
+
+        magic = data[0:4]
+        expected = derive_magic(password) if password else MAGIC_BYTES
+        if magic != expected:
+            raise ValueError(f"Invalid magic bytes: {magic!r} != {expected!r}")
+
+        version = data[4]
+        if version > FORMAT_VERSION:
+            raise ValueError(f"Unsupported version: {version} > {FORMAT_VERSION}")
+
+        config = StegConfig.from_bytes(data[5:13])
+        payload_length = struct.unpack('>I', data[16:20])[0]
+        original_length = struct.unpack('>I', data[20:24])[0]
+        crc32 = struct.unpack('>I', data[24:28])[0]
+
+        return cls(
+            version=version,
+            config=config,
+            payload_length=payload_length,
+            original_length=original_length,
+            crc32=crc32
+        )
+
+
+# ============== BIT MANIPULATION (Vectorized) ==============
+
+def _create_bit_mask(bits: int, offset: int = 0) -> int:
+    """Create a bit mask for specified bits at offset"""
+    return ((1 << bits) - 1) << offset
+
+
+def _bytes_to_bits_array(data: bytes, bits_per_unit: int = 1) -> np.ndarray:
+    """
+    Convert bytes to numpy array of bit groups.
+    Much faster than string conversion.
+
+    Args:
+        data: Input bytes
+        bits_per_unit: How many bits per output element (1-8)
+
+    Returns:
+        numpy array of uint8 values, each containing bits_per_unit bits
+    """
+    # Convert to bit array
+    byte_array = np.frombuffer(data, dtype=np.uint8)
+    # Unpack each byte into 8 bits
+    bits = np.unpackbits(byte_array)
+
+    # Group into units of bits_per_unit
+    if bits_per_unit == 1:
+        return bits
+
+    # Pad to multiple of bits_per_unit
+    pad_len = (bits_per_unit - len(bits) % bits_per_unit) % bits_per_unit
+    if pad_len:
+        bits = np.concatenate([bits, np.zeros(pad_len, dtype=np.uint8)])
+
+    # Reshape and combine bits
+    bits = bits.reshape(-1, bits_per_unit)
+    # Convert each group to a value (MSB first within each group)
+    multipliers = 2 ** np.arange(bits_per_unit - 1, -1, -1, dtype=np.uint8)
+    return np.sum(bits * multipliers, axis=1).astype(np.uint8)
+
+
+def _bits_array_to_bytes(bits: np.ndarray, bits_per_unit: int = 1, total_bits: int = None) -> bytes:
+    """
+    Convert numpy array of bit groups back to bytes.
+
+    Args:
+        bits: Array of bit values
+        bits_per_unit: Bits per element in input array
+        total_bits: Total number of valid bits (for trimming padding)
+
+    Returns:
+        Reconstructed bytes
+    """
+    if bits_per_unit == 1:
+        bit_array = bits
+    else:
+        # Expand each value to bits_per_unit bits
+        bit_array = np.zeros(len(bits) * bits_per_unit, dtype=np.uint8)
+        for i in range(bits_per_unit):
+            shift = bits_per_unit - 1 - i
+            bit_array[i::bits_per_unit] = (bits >> shift) & 1
+
+    # Trim to total_bits if specified
+    if total_bits is not None:
+        bit_array = bit_array[:total_bits]
+
+    # Pad to multiple of 8
+    pad_len = (8 - len(bit_array) % 8) % 8
+    if pad_len:
+        bit_array = np.concatenate([bit_array, np.zeros(pad_len, dtype=np.uint8)])
+
+    # Pack into bytes
+    return np.packbits(bit_array).tobytes()
+
+
+# ============== PIXEL INDEX GENERATION ==============
+
+def _generate_pixel_indices(
+    num_pixels: int,
+    num_needed: int,
+    strategy: EncodingStrategy,
+    seed: Optional[int] = None
+) -> np.ndarray:
+    """
+    Generate pixel indices based on encoding strategy.
+
+    Args:
+        num_pixels: Total pixels available
+        num_needed: Number of pixels needed
+        strategy: Encoding strategy
+        seed: Random seed for reproducibility
+
+    Returns:
+        Array of pixel indices to use
+    """
+    if num_needed > num_pixels:
+        raise ValueError(f"Not enough pixels: need {num_needed}, have {num_pixels}")
+
+    if strategy == EncodingStrategy.SEQUENTIAL or strategy == EncodingStrategy.INTERLEAVED:
+        # Simple sequential indices
+        return np.arange(num_needed, dtype=np.uint32)
+
+    elif strategy == EncodingStrategy.SPREAD:
+        # Spread evenly across the image
+        step = num_pixels / num_needed
+        return np.floor(np.arange(num_needed) * step).astype(np.uint32)
+
+    elif strategy == EncodingStrategy.RANDOMIZED:
+        # Pseudo-random but reproducible
+        rng = np.random.default_rng(seed or 42)
+        indices = rng.permutation(num_pixels)[:num_needed]
+        return np.sort(indices).astype(np.uint32)  # Sort for cache efficiency
+
+    return np.arange(num_needed, dtype=np.uint32)
+
+
+# ============== CAPACITY CALCULATION ==============
+
+def calculate_capacity(image: Image.Image, config: StegConfig) -> Dict[str, Any]:
+    """Calculate steganographic capacity of an image"""
+    width, height = image.size
+    total_pixels = width * height
+
+    bits_per_pixel = config.bits_per_pixel
+    total_bits = total_pixels * bits_per_pixel
+    total_bytes = total_bits // 8
+
+    # Account for header
+    header_bits = HEADER_SIZE * 8
+    usable_bits = total_bits - header_bits
+    usable_bytes = usable_bits // 8
+
+    return {
+        "dimensions": (width, height),
+        "pixels": total_pixels,
+        "bits_total": total_bits,
+        "bytes_total": total_bytes,
+        "header_bytes": HEADER_SIZE,
+        "usable_bits": usable_bits,
+        "usable_bytes": max(0, usable_bytes),
+        "human": _human_readable_size(max(0, usable_bytes)),
+        "config": {
+            "channels": [c.name for c in config.channels],
+            "bits_per_channel": config.bits_per_channel,
+            "bits_per_pixel": bits_per_pixel,
+            "strategy": config.strategy.value,
+        }
+    }
+
+
+def _human_readable_size(size_bytes: int) -> str:
+    """Convert bytes to human readable string"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.2f} TB"
+
+
+# ============== ENCODER ==============
+
+def encode(
+    image: Image.Image,
+    data: bytes,
+    config: StegConfig,
+    output_path: Optional[str] = None
+) -> Image.Image:
+    """
+    Encode data into image using LSB steganography.
+
+    Args:
+        image: Source PIL Image
+        data: Bytes to encode
+        config: Steganography configuration
+        output_path: Optional path to save result
+
+    Returns:
+        Modified PIL Image with embedded data
+    """
+    # Convert to RGBA numpy array
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    height, width = pixels.shape[:2]
+    total_pixels = height * width
+
+    # Prepare payload
+    original_length = len(data)
+    if config.use_compression:
+        payload = zlib.compress(data, level=9)
+    else:
+        payload = data
+
+    payload_length = len(payload)
+    crc32 = zlib.crc32(data) & 0xFFFFFFFF
+
+    # Create header
+    header = StegHeader(
+        version=FORMAT_VERSION,
+        config=config,
+        payload_length=payload_length,
+        original_length=original_length,
+        crc32=crc32
+    )
+    header_bytes = header.to_bytes()
+
+    # Combine header and payload
+    full_data = header_bytes + payload
+
+    # Check capacity
+    capacity = calculate_capacity(image, config)
+    data_bits_needed = len(full_data) * 8
+    if data_bits_needed > capacity["bits_total"]:
+        raise ValueError(
+            f"Data too large: {len(full_data):,} bytes needed, "
+            f"{capacity['bytes_total']:,} bytes available"
+        )
+
+    # Convert data to bit units
+    bits_per_ch = config.bits_per_channel
+    bit_units = _bytes_to_bits_array(full_data, bits_per_ch)
+
+    # Calculate how many pixel-channel slots we need
+    num_channels = len(config.channels)
+    channel_indices = config.channel_indices
+
+    if config.strategy == EncodingStrategy.INTERLEAVED:
+        # Interleaved: cycle through channels at each pixel
+        slots_needed = len(bit_units)
+        pixels_needed = (slots_needed + num_channels - 1) // num_channels
+
+        # Generate pixel indices
+        pixel_indices = _generate_pixel_indices(
+            total_pixels, pixels_needed, config.strategy, config.seed
+        )
+
+        # Flatten pixels for easier access
+        flat_pixels = pixels.reshape(-1, 4)
+
+        # Embed data
+        bit_mask = _create_bit_mask(bits_per_ch, config.bit_offset)
+        clear_mask = ~bit_mask & 0xFF
+
+        slot_idx = 0
+        for pix_idx in pixel_indices:
+            for ch in channel_indices:
+                if slot_idx >= len(bit_units):
+                    break
+                # Clear target bits and set new value
+                original = flat_pixels[pix_idx, ch]
+                value = bit_units[slot_idx]
+                flat_pixels[pix_idx, ch] = (original & clear_mask) | (value << config.bit_offset)
+                slot_idx += 1
+            if slot_idx >= len(bit_units):
+                break
+
+        # Reshape back
+        pixels = flat_pixels.reshape(height, width, 4)
+
+    else:
+        # Sequential or other strategies: process each channel in order
+        flat_pixels = pixels.reshape(-1, 4)
+
+        if config.strategy == EncodingStrategy.SEQUENTIAL:
+            # Fill each channel completely before moving to next
+            bit_mask = _create_bit_mask(bits_per_ch, config.bit_offset)
+            clear_mask = ~bit_mask & 0xFF
+
+            slot_idx = 0
+            for ch in channel_indices:
+                pixel_indices = _generate_pixel_indices(
+                    total_pixels,
+                    min(total_pixels, len(bit_units) - slot_idx),
+                    config.strategy,
+                    config.seed
+                )
+                for pix_idx in pixel_indices:
+                    if slot_idx >= len(bit_units):
+                        break
+                    original = flat_pixels[pix_idx, ch]
+                    value = bit_units[slot_idx]
+                    flat_pixels[pix_idx, ch] = (original & clear_mask) | (value << config.bit_offset)
+                    slot_idx += 1
+                if slot_idx >= len(bit_units):
+                    break
+
+        else:
+            # Spread or randomized: derive the pixel order from the full image
+            # capacity, not from the current payload size, so decode (which
+            # doesn't know payload_length until after it parses the header) can
+            # regenerate the same prefix of indices. Encoder consumes only the
+            # first `slots_needed` positions; decoder walks the same first N.
+            slots_needed = len(bit_units)
+
+            pixel_indices = _generate_pixel_indices(
+                total_pixels, total_pixels, config.strategy, config.seed
+            )
+
+            bit_mask = _create_bit_mask(bits_per_ch, config.bit_offset)
+            clear_mask = ~bit_mask & 0xFF
+
+            slot_idx = 0
+            for pix_idx in pixel_indices:
+                for ch in channel_indices:
+                    if slot_idx >= len(bit_units):
+                        break
+                    original = flat_pixels[pix_idx, ch]
+                    value = bit_units[slot_idx]
+                    flat_pixels[pix_idx, ch] = (original & clear_mask) | (value << config.bit_offset)
+                    slot_idx += 1
+                if slot_idx >= len(bit_units):
+                    break
+
+        pixels = flat_pixels.reshape(height, width, 4)
+
+    # Create result image
+    result = Image.fromarray(pixels, 'RGBA')
+
+    if output_path:
+        result.save(output_path, format='PNG', optimize=False)
+
+    return result
+
+
+# ============== DECODER ==============
+
+def decode(
+    image: Image.Image,
+    config: Optional[StegConfig] = None,
+    verify_checksum: bool = True
+) -> bytes:
+    """
+    Decode data from image using LSB steganography.
+
+    Args:
+        image: PIL Image with embedded data
+        config: Optional config (if None, auto-detect from header)
+        verify_checksum: Whether to verify CRC32 checksum
+
+    Returns:
+        Extracted bytes
+    """
+    # Convert to RGBA numpy array
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    height, width = pixels.shape[:2]
+    total_pixels = height * width
+    flat_pixels = pixels.reshape(-1, 4)
+
+    # First, we need to extract the header to get config
+    if config is None:
+        # Auto-detect: exhaustive search across all channel/bit combos
+        detected = detect_encoding(image)
+        if detected:
+            # Reconstruct config from detection result
+            channel_map = {'R': Channel.R, 'G': Channel.G, 'B': Channel.B, 'A': Channel.A}
+            channels = [channel_map[c] for c in detected['config']['channels']]
+            header_config = StegConfig(
+                channels=channels,
+                bits_per_channel=detected['config']['bits_per_channel']
+            )
+        else:
+            # Fallback to default
+            header_config = StegConfig()
+    else:
+        header_config = config
+
+    # Extract header bytes
+    header_bits_needed = HEADER_SIZE * 8
+    header_units_needed = header_bits_needed // header_config.bits_per_channel
+    if header_bits_needed % header_config.bits_per_channel:
+        header_units_needed += 1
+
+    header_units = _extract_bit_units(
+        flat_pixels,
+        header_units_needed,
+        header_config,
+        total_pixels
+    )
+
+    header_bytes = _bits_array_to_bytes(
+        header_units,
+        header_config.bits_per_channel,
+        header_bits_needed
+    )[:HEADER_SIZE]
+
+    # Parse header
+    try:
+        header = StegHeader.from_bytes(header_bytes)
+    except ValueError as e:
+        raise ValueError(f"Failed to decode header: {e}. Image may not contain encoded data or config mismatch.")
+
+    # Use config from header if not provided
+    actual_config = config if config else header.config
+
+    # Now extract the full payload using actual config
+    total_data_len = HEADER_SIZE + header.payload_length
+    total_bits_needed = total_data_len * 8
+    total_units_needed = total_bits_needed // actual_config.bits_per_channel
+    if total_bits_needed % actual_config.bits_per_channel:
+        total_units_needed += 1
+
+    all_units = _extract_bit_units(
+        flat_pixels,
+        total_units_needed,
+        actual_config,
+        total_pixels
+    )
+
+    all_bytes = _bits_array_to_bytes(
+        all_units,
+        actual_config.bits_per_channel,
+        total_bits_needed
+    )
+
+    # Extract payload (skip header)
+    payload = all_bytes[HEADER_SIZE:HEADER_SIZE + header.payload_length]
+
+    if len(payload) < header.payload_length:
+        raise ValueError(
+            f"Incomplete payload: got {len(payload)}, expected {header.payload_length}"
+        )
+
+    # Decompress if needed
+    if actual_config.use_compression:
+        try:
+            data = zlib.decompress(payload)
+        except zlib.error as e:
+            raise ValueError(f"Decompression failed: {e}")
+    else:
+        data = payload
+
+    # Verify length
+    if len(data) != header.original_length:
+        raise ValueError(
+            f"Length mismatch: got {len(data)}, expected {header.original_length}"
+        )
+
+    # Verify checksum
+    if verify_checksum:
+        actual_crc = zlib.crc32(data) & 0xFFFFFFFF
+        if actual_crc != header.crc32:
+            raise ValueError(
+                f"Checksum mismatch: got {actual_crc:08x}, expected {header.crc32:08x}. "
+                "Data may be corrupted."
+            )
+
+    return data
+
+
+def _extract_bit_units(
+    flat_pixels: np.ndarray,
+    num_units: int,
+    config: StegConfig,
+    total_pixels: int
+) -> np.ndarray:
+    """
+    Extract bit units from pixel array.
+
+    Args:
+        flat_pixels: Flattened pixel array (N, 4)
+        num_units: Number of bit units to extract
+        config: Steganography configuration
+        total_pixels: Total number of pixels
+
+    Returns:
+        Array of extracted bit values
+    """
+    channel_indices = config.channel_indices
+    num_channels = len(channel_indices)
+    bits_per_ch = config.bits_per_channel
+    bit_offset = config.bit_offset
+    bit_mask = _create_bit_mask(bits_per_ch, bit_offset)
+
+    result = np.zeros(num_units, dtype=np.uint8)
+
+    if config.strategy == EncodingStrategy.INTERLEAVED:
+        pixels_needed = (num_units + num_channels - 1) // num_channels
+        pixel_indices = _generate_pixel_indices(
+            total_pixels, pixels_needed, config.strategy, config.seed
+        )
+
+        unit_idx = 0
+        for pix_idx in pixel_indices:
+            for ch in channel_indices:
+                if unit_idx >= num_units:
+                    break
+                value = flat_pixels[pix_idx, ch]
+                result[unit_idx] = (value & bit_mask) >> bit_offset
+                unit_idx += 1
+            if unit_idx >= num_units:
+                break
+
+    elif config.strategy == EncodingStrategy.SEQUENTIAL:
+        unit_idx = 0
+        for ch in channel_indices:
+            pixel_indices = _generate_pixel_indices(
+                total_pixels,
+                min(total_pixels, num_units - unit_idx),
+                config.strategy,
+                config.seed
+            )
+            for pix_idx in pixel_indices:
+                if unit_idx >= num_units:
+                    break
+                value = flat_pixels[pix_idx, ch]
+                result[unit_idx] = (value & bit_mask) >> bit_offset
+                unit_idx += 1
+            if unit_idx >= num_units:
+                break
+
+    else:
+        # Spread or randomized: mirror the encoder — generate the pixel order
+        # over the full image capacity so the first `num_units` positions match
+        # what encode() wrote, regardless of what num_units was on the encode
+        # side. See the matching branch in encode().
+        pixel_indices = _generate_pixel_indices(
+            total_pixels, total_pixels, config.strategy, config.seed
+        )
+
+        unit_idx = 0
+        for pix_idx in pixel_indices:
+            for ch in channel_indices:
+                if unit_idx >= num_units:
+                    break
+                value = flat_pixels[pix_idx, ch]
+                result[unit_idx] = (value & bit_mask) >> bit_offset
+                unit_idx += 1
+            if unit_idx >= num_units:
+                break
+
+    return result
+
+
+# ============== CONVENIENCE FUNCTIONS ==============
+
+def encode_text(
+    image: Image.Image,
+    text: str,
+    config: StegConfig,
+    output_path: Optional[str] = None
+) -> Image.Image:
+    """Encode text string into image"""
+    return encode(image, text.encode('utf-8'), config, output_path)
+
+
+def decode_text(
+    image: Image.Image,
+    config: Optional[StegConfig] = None
+) -> str:
+    """Decode text string from image"""
+    data = decode(image, config)
+    return data.decode('utf-8')
+
+
+def create_config(
+    channels: str = "RGB",
+    bits: int = 1,
+    compress: bool = True,
+    strategy: str = "interleaved",
+    bit_offset: int = 0,
+    seed: Optional[int] = None
+) -> StegConfig:
+    """
+    Create a StegConfig with convenient parameters.
+
+    Args:
+        channels: Channel preset name (R, G, B, A, RGB, RGBA, etc.)
+        bits: Bits per channel (1-8)
+        compress: Whether to compress data
+        strategy: Encoding strategy ('sequential', 'interleaved', 'spread', 'randomized')
+        bit_offset: Bit position offset (0 = LSB)
+        seed: Random seed for randomized strategy
+
+    Returns:
+        StegConfig instance
+    """
+    strategy_map = {
+        'sequential': EncodingStrategy.SEQUENTIAL,
+        'interleaved': EncodingStrategy.INTERLEAVED,
+        'spread': EncodingStrategy.SPREAD,
+        'randomized': EncodingStrategy.RANDOMIZED,
+    }
+
+    return StegConfig(
+        channels=get_channel_preset(channels),
+        bits_per_channel=max(1, min(8, bits)),
+        bit_offset=max(0, min(7, bit_offset)),
+        use_compression=compress,
+        strategy=strategy_map.get(strategy.lower(), EncodingStrategy.INTERLEAVED),
+        seed=seed
+    )
+
+
+# ============== ANALYSIS ==============
+
+def analyze_image(image: Image.Image) -> Dict[str, Any]:
+    """
+    Analyze an image for steganography potential and detection.
+
+    Performs statistical analysis to detect potential hidden data.
+    """
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+
+    analysis = {
+        "dimensions": {"width": img.width, "height": img.height},
+        "total_pixels": img.width * img.height,
+        "mode": image.mode,
+        "format": image.format,
+        "channels": {},
+        "capacity_by_config": {},
+        "detection": {},
+    }
+
+    # Analyze each channel
+    channel_names = ['R', 'G', 'B', 'A']
+    for i, name in enumerate(channel_names):
+        channel_data = pixels[:, :, i].flatten()
+
+        # Basic statistics
+        mean_val = float(np.mean(channel_data))
+        std_val = float(np.std(channel_data))
+
+        # LSB analysis
+        lsb = channel_data & 1
+        lsb_zeros = np.sum(lsb == 0)
+        lsb_ones = np.sum(lsb == 1)
+        total = len(channel_data)
+
+        # Chi-square test for LSB
+        expected = total / 2
+        chi_square = ((lsb_zeros - expected) ** 2 + (lsb_ones - expected) ** 2) / expected
+
+        # Pairs analysis (RS analysis simplified)
+        even_pixels = channel_data[::2]
+        odd_pixels = channel_data[1::2] if len(channel_data) > 1 else even_pixels
+
+        # Calculate LSB flipping effect
+        min_len = min(len(even_pixels), len(odd_pixels))
+        diff_original = np.abs(even_pixels[:min_len].astype(np.int16) - odd_pixels[:min_len].astype(np.int16))
+        flipped_even = even_pixels[:min_len] ^ 1
+        diff_flipped = np.abs(flipped_even.astype(np.int16) - odd_pixels[:min_len].astype(np.int16))
+
+        smoothness_change = np.mean(diff_flipped) - np.mean(diff_original)
+
+        analysis["channels"][name] = {
+            "mean": mean_val,
+            "std": std_val,
+            "min": int(np.min(channel_data)),
+            "max": int(np.max(channel_data)),
+            "lsb_ratio": {
+                "zeros": lsb_zeros / total,
+                "ones": lsb_ones / total,
+            },
+            "chi_square": float(chi_square),
+            "chi_square_indicator": min(1.0, chi_square / 100),  # Normalized 0-1
+            "smoothness_change": float(smoothness_change),
+        }
+
+    # Overall detection score
+    max_chi = max(ch["chi_square_indicator"] for ch in analysis["channels"].values())
+    avg_smoothness = np.mean([abs(ch["smoothness_change"]) for ch in analysis["channels"].values()])
+
+    if max_chi > 0.5 or avg_smoothness > 0.5:
+        detection_level = "HIGH"
+        confidence = min(0.95, (max_chi + avg_smoothness) / 2)
+    elif max_chi > 0.2 or avg_smoothness > 0.2:
+        detection_level = "MEDIUM"
+        confidence = (max_chi + avg_smoothness) / 4
+    else:
+        detection_level = "LOW"
+        confidence = max_chi / 4
+
+    analysis["detection"] = {
+        "level": detection_level,
+        "confidence": float(confidence),
+        "recommendation": (
+            "High probability of hidden data" if detection_level == "HIGH" else
+            "Possible hidden data" if detection_level == "MEDIUM" else
+            "No obvious indicators"
+        )
+    }
+
+    # Calculate capacity for common configurations
+    for preset_name in ["R", "RGB", "RGBA"]:
+        for bits in [1, 2, 4]:
+            config = StegConfig(
+                channels=get_channel_preset(preset_name),
+                bits_per_channel=bits
+            )
+            cap = calculate_capacity(image, config)
+            analysis["capacity_by_config"][f"{preset_name}_{bits}bit"] = cap["human"]
+
+    return analysis
+
+
+def detect_encoding(image: Image.Image, password: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Attempt to detect if image contains STEG-encoded data.
+
+    If password is provided, also checks for password-derived magic bytes
+    (stealth mode headers that are undetectable without the password).
+
+    Returns detection info if magic bytes found, None otherwise.
+    """
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    flat_pixels = pixels.reshape(-1, 4)
+
+    # Exhaustive search — try ALL 15 channel presets × 8 bit depths = 120 combinations
+    all_channel_combos = [
+        [Channel.R, Channel.G, Channel.B],           # RGB (most common first)
+        [Channel.R, Channel.G, Channel.B, Channel.A], # RGBA
+        [Channel.R],                                   # R
+        [Channel.G],                                   # G
+        [Channel.B],                                   # B
+        [Channel.A],                                   # A
+        [Channel.R, Channel.G],                        # RG
+        [Channel.R, Channel.B],                        # RB
+        [Channel.R, Channel.A],                        # RA
+        [Channel.G, Channel.B],                        # GB
+        [Channel.G, Channel.A],                        # GA
+        [Channel.B, Channel.A],                        # BA
+        [Channel.R, Channel.G, Channel.A],             # RGA
+        [Channel.R, Channel.B, Channel.A],             # RBA
+        [Channel.G, Channel.B, Channel.A],             # GBA
+    ]
+
+    configs_to_try = []
+    for channels in all_channel_combos:
+        for bits in range(1, 9):  # 1-8 bits per channel
+            configs_to_try.append(StegConfig(channels=channels, bits_per_channel=bits))
+
+    for config in configs_to_try:
+        try:
+            header_units = _extract_bit_units(
+                flat_pixels,
+                HEADER_SIZE * 8 // config.bits_per_channel + 1,
+                config,
+                len(flat_pixels)
+            )
+            header_bytes = _bits_array_to_bytes(
+                header_units,
+                config.bits_per_channel,
+                HEADER_SIZE * 8
+            )[:HEADER_SIZE]
+
+            # Check for both fixed magic AND password-derived magic
+            expected_magics = [MAGIC_BYTES]
+            if password:
+                expected_magics.append(derive_magic(password))
+            if header_bytes[:4] in expected_magics:
+                header = StegHeader.from_bytes(header_bytes)
+                return {
+                    "detected": True,
+                    "config": {
+                        "channels": [c.name for c in header.config.channels],
+                        "bits_per_channel": header.config.bits_per_channel,
+                        "strategy": header.config.strategy.value,
+                        "compression": header.config.use_compression,
+                    },
+                    "payload_length": header.payload_length,
+                    "original_length": header.original_length,
+                }
+        except:
+            continue
+
+    return None
+
+
+# ============== BRUTE FORCE LSB EXTRACTION ==============
+
+# Common file signatures for detection
+FILE_SIGNATURES = {
+    b'\x89PNG\r\n\x1a\n': 'PNG image',
+    b'GIF87a': 'GIF image',
+    b'GIF89a': 'GIF image',
+    b'\xff\xd8\xff': 'JPEG image',
+    b'PK\x03\x04': 'ZIP/Office file',
+    b'PK\x05\x06': 'ZIP (empty)',
+    b'\x7fELF': 'ELF executable',
+    b'%PDF': 'PDF document',
+    b'Rar!\x1a\x07': 'RAR archive',
+    b'\x1f\x8b\x08': 'GZIP data',
+    b'BZh': 'BZIP2 data',
+    b'\xfd7zXZ': 'XZ data',
+    b'SQLite': 'SQLite database',
+    b'{\n': 'JSON (likely)',
+    b'{"': 'JSON object',
+    b'<?xml': 'XML document',
+    b'<!DOCTYPE': 'HTML document',
+    b'<html': 'HTML document',
+}
+
+
+def _is_printable_ascii(data: bytes, threshold: float = 0.85) -> bool:
+    """Check if data is mostly printable ASCII"""
+    if not data:
+        return False
+    printable = sum(1 for b in data if 32 <= b <= 126 or b in (9, 10, 13))
+    return printable / len(data) >= threshold
+
+
+def _is_valid_utf8(data: bytes) -> bool:
+    """Check if data is valid UTF-8"""
+    try:
+        data.decode('utf-8')
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def _detect_file_type(data: bytes) -> Optional[str]:
+    """Detect file type from magic bytes"""
+    for sig, file_type in FILE_SIGNATURES.items():
+        if data.startswith(sig):
+            return file_type
+    return None
+
+
+def _score_extraction(data: bytes, max_check: int = 1000) -> Dict[str, Any]:
+    """
+    Score extracted data for likelihood of being meaningful content.
+
+    Returns dict with score (0-100) and detected characteristics.
+    """
+    if not data:
+        return {"score": 0, "reason": "empty"}
+
+    check_data = data[:max_check]
+    result = {
+        "score": 0,
+        "is_text": False,
+        "is_utf8": False,
+        "file_type": None,
+        "preview": None,
+        "length": len(data),
+    }
+
+    # Check for file signatures (highest confidence)
+    file_type = _detect_file_type(data)
+    if file_type:
+        result["score"] = 95
+        result["file_type"] = file_type
+        return result
+
+    # Check for valid UTF-8 text
+    if _is_valid_utf8(check_data):
+        result["is_utf8"] = True
+        text = check_data.decode('utf-8', errors='replace')
+
+        # Check printable ratio
+        if _is_printable_ascii(check_data, 0.90):
+            result["score"] = 85
+            result["is_text"] = True
+            result["preview"] = text[:200]
+        elif _is_printable_ascii(check_data, 0.70):
+            result["score"] = 60
+            result["is_text"] = True
+            result["preview"] = text[:200]
+        else:
+            result["score"] = 20
+
+    # Check for ASCII text (even if not valid UTF-8)
+    elif _is_printable_ascii(check_data, 0.85):
+        result["score"] = 70
+        result["is_text"] = True
+        result["preview"] = check_data.decode('ascii', errors='replace')[:200]
+
+    # Low entropy might indicate compressed/encrypted data
+    # (not random noise)
+    else:
+        # Check if it looks like compressed data (has some structure)
+        byte_freq = {}
+        for b in check_data:
+            byte_freq[b] = byte_freq.get(b, 0) + 1
+        unique_ratio = len(byte_freq) / 256
+
+        if unique_ratio < 0.5:  # Less than half of possible byte values
+            result["score"] = 15
+            result["reason"] = "possibly compressed/encrypted"
+
+    return result
+
+
+def extract_raw_lsb(
+    image: Image.Image,
+    channels: List[Channel],
+    bits_per_channel: int = 1,
+    max_bytes: int = 10000,
+    strategy: EncodingStrategy = EncodingStrategy.SEQUENTIAL
+) -> bytes:
+    """
+    Extract raw LSB data without expecting any header format.
+
+    Args:
+        image: PIL Image
+        channels: List of channels to extract from
+        bits_per_channel: Bits per channel (1-8)
+        max_bytes: Maximum bytes to extract
+        strategy: Extraction strategy
+
+    Returns:
+        Raw extracted bytes
+    """
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    height, width = pixels.shape[:2]
+    total_pixels = height * width
+    flat_pixels = pixels.reshape(-1, 4)
+
+    config = StegConfig(
+        channels=channels,
+        bits_per_channel=bits_per_channel,
+        strategy=strategy,
+    )
+
+    bits_needed = max_bytes * 8
+    units_needed = bits_needed // bits_per_channel
+    if bits_needed % bits_per_channel:
+        units_needed += 1
+
+    # Don't exceed image capacity
+    max_units = (total_pixels * len(channels) * bits_per_channel) // bits_per_channel
+    units_needed = min(units_needed, max_units)
+
+    units = _extract_bit_units(flat_pixels, units_needed, config, total_pixels)
+    data = _bits_array_to_bytes(units, bits_per_channel, units_needed * bits_per_channel)
+
+    return data[:max_bytes]
+
+
+def brute_force_extract(
+    image: Image.Image,
+    max_bytes: int = 5000,
+    include_sequential: bool = True,
+    include_interleaved: bool = True,
+) -> List[Dict[str, Any]]:
+    """
+    Try multiple LSB extraction configurations and return scored results.
+
+    This function tries common steganography configurations WITHOUT
+    expecting any specific header format. Useful for images encoded
+    with other tools.
+
+    Args:
+        image: PIL Image to analyze
+        max_bytes: Max bytes to extract per config
+        include_sequential: Try sequential strategy
+        include_interleaved: Try interleaved strategy
+
+    Returns:
+        List of results sorted by score (highest first), each containing:
+        - config: channel/bit configuration used
+        - score: likelihood score (0-100)
+        - data: extracted bytes
+        - preview: text preview if applicable
+        - file_type: detected file type if applicable
+    """
+    results = []
+
+    # Configurations to try (ordered by commonality)
+    channel_configs = [
+        # Single channels (very common in basic steg tools)
+        ([Channel.R], "R"),
+        ([Channel.G], "G"),
+        ([Channel.B], "B"),
+        ([Channel.A], "A"),
+        # Multi-channel (common)
+        ([Channel.R, Channel.G, Channel.B], "RGB"),
+        ([Channel.R, Channel.G, Channel.B, Channel.A], "RGBA"),
+        # Two-channel combos
+        ([Channel.R, Channel.G], "RG"),
+        ([Channel.R, Channel.B], "RB"),
+        ([Channel.G, Channel.B], "GB"),
+    ]
+
+    bit_depths = [1, 2]  # Most common
+
+    strategies = []
+    if include_sequential:
+        strategies.append(EncodingStrategy.SEQUENTIAL)
+    if include_interleaved:
+        strategies.append(EncodingStrategy.INTERLEAVED)
+
+    for channels, channel_name in channel_configs:
+        for bits in bit_depths:
+            for strategy in strategies:
+                try:
+                    data = extract_raw_lsb(
+                        image,
+                        channels,
+                        bits,
+                        max_bytes,
+                        strategy
+                    )
+
+                    score_result = _score_extraction(data)
+
+                    if score_result["score"] > 10:  # Filter out noise
+                        results.append({
+                            "config": {
+                                "channels": channel_name,
+                                "bits_per_channel": bits,
+                                "strategy": strategy.value,
+                            },
+                            "score": score_result["score"],
+                            "data": data,
+                            "preview": score_result.get("preview"),
+                            "file_type": score_result.get("file_type"),
+                            "is_text": score_result.get("is_text", False),
+                            "length": len(data),
+                        })
+                except Exception:
+                    continue
+
+    # Sort by score descending
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    return results
+
+
+def smart_extract(
+    image: Image.Image,
+    max_bytes: int = 10000,
+) -> Optional[Dict[str, Any]]:
+    """
+    Intelligently extract hidden data, trying STEG header first,
+    then falling back to brute force extraction.
+
+    Args:
+        image: PIL Image
+        max_bytes: Max bytes to extract
+
+    Returns:
+        Best extraction result or None if nothing found
+    """
+    # First try STEG v3 header detection
+    detection = detect_encoding(image)
+    if detection:
+        try:
+            data = decode(image, verify_checksum=True)
+            return {
+                "method": "steg_v3_header",
+                "config": detection["config"],
+                "data": data,
+                "score": 100,
+                "is_text": _is_valid_utf8(data),
+                "preview": data.decode('utf-8', errors='replace')[:200] if _is_valid_utf8(data) else None,
+            }
+        except Exception:
+            pass  # Fall through to brute force
+
+    # Brute force extraction
+    results = brute_force_extract(image, max_bytes)
+
+    if results and results[0]["score"] >= 50:
+        return {
+            "method": "brute_force_lsb",
+            **results[0]
+        }
+
+    # Return best result even if low confidence
+    if results:
+        return {
+            "method": "brute_force_lsb",
+            "confidence": "low",
+            **results[0]
+        }
+
+    return None
+
+
+# ============== DCT STEGANOGRAPHY (frequency-domain, JPEG-survivable) ==============
+#
+# Port of the DCT encode/decode in index.html so the core Python library covers
+# the same technique the Web UI does. Same wire format ("DCTS" magic + strength
+# + big-endian length + payload), same mid-frequency embedding position, same
+# three robustness settings — so encodes made in the browser round-trip in
+# Python and vice-versa.
+
+DCT_MAGIC = b"DCTS"
+DCT_HEADER_SIZE = 9  # 4 magic + 1 strength + 4 length (big-endian)
+
+# Robustness -> quantization strength. Higher strength survives more compression
+# but distorts the image more visibly.
+DCT_STRENGTHS = {"low": 10, "medium": 25, "high": 50}
+
+# Mid-frequency zig-zag position used for embedding — matches the JS
+# DCT_EMBED_POSITIONS[0] in index.html.
+DCT_EMBED_POS = (0, 1)
+
+
+def _dct_matrix(n: int) -> np.ndarray:
+    """Orthonormal DCT-II basis matrix, same convention as the JS side."""
+    k = np.arange(n)
+    j = np.arange(n)
+    m = np.sqrt(2.0 / n) * np.cos(((2 * j[None, :] + 1) * k[:, None] * np.pi) / (2 * n))
+    m[0, :] = 1.0 / np.sqrt(n)
+    return m
+
+
+def _luminance(pixels: np.ndarray) -> np.ndarray:
+    """Rec.601 luma from an (H,W,>=3) uint8 array — matches the JS coefficients."""
+    return (
+        0.299 * pixels[..., 0].astype(np.float64)
+        + 0.587 * pixels[..., 1].astype(np.float64)
+        + 0.114 * pixels[..., 2].astype(np.float64)
+    )
+
+
+def dct_encode(
+    image: Image.Image,
+    data: bytes,
+    robustness: str = "medium",
+    block_size: int = 8,
+    output_path: Optional[str] = None,
+) -> Image.Image:
+    """Embed bytes into an image's luminance DCT coefficients (one bit / block).
+
+    Survives JPEG-style recompression to a degree controlled by ``robustness``:
+    ``"low"`` is subtlest but fragile, ``"high"`` is most robust but visible.
+    Interop-compatible with the DCT tool in index.html.
+    """
+    if robustness not in DCT_STRENGTHS:
+        raise ValueError(f"robustness must be one of {list(DCT_STRENGTHS)}")
+    if block_size <= 0 or block_size > 32:
+        raise ValueError("block_size must be in 1..32")
+
+    strength = DCT_STRENGTHS[robustness]
+
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    height, width = pixels.shape[:2]
+
+    header = bytearray(DCT_HEADER_SIZE)
+    header[0:4] = DCT_MAGIC
+    header[4] = strength
+    struct.pack_into(">I", header, 5, len(data))
+    full_data = bytes(header) + data
+
+    bits = np.unpackbits(np.frombuffer(full_data, dtype=np.uint8))
+
+    blocks_x = width // block_size
+    blocks_y = height // block_size
+    capacity = blocks_x * blocks_y
+    if len(bits) > capacity:
+        raise ValueError(
+            f"DCT capacity exceeded: need {len(bits)} bits, have {capacity} "
+            f"(image is {width}x{height}, block_size={block_size})"
+        )
+
+    m = _dct_matrix(block_size)
+    m_t = m.T
+    cy, cx = DCT_EMBED_POS
+
+    lum = _luminance(pixels)
+    bit_idx = 0
+    for by in range(blocks_y):
+        if bit_idx >= len(bits):
+            break
+        for bx in range(blocks_x):
+            if bit_idx >= len(bits):
+                break
+            y0 = by * block_size
+            x0 = bx * block_size
+            block = lum[y0 : y0 + block_size, x0 : x0 + block_size]
+
+            dct_block = m @ block @ m_t
+
+            coeff = dct_block[cy, cx]
+            q = np.floor(coeff / strength)
+            bit = int(bits[bit_idx])
+            dct_block[cy, cx] = (q + (0.75 if bit else 0.25)) * strength
+
+            reconstructed = m_t @ dct_block @ m
+            new_lum = np.clip(reconstructed, 0.0, 255.0)
+
+            old_lum = block
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where(old_lum > 0, new_lum / old_lum, 1.0)
+
+            for ch in range(3):
+                scaled = pixels[y0 : y0 + block_size, x0 : x0 + block_size, ch].astype(
+                    np.float64
+                ) * ratio
+                pixels[y0 : y0 + block_size, x0 : x0 + block_size, ch] = np.clip(
+                    np.round(scaled), 0, 255
+                ).astype(np.uint8)
+
+            bit_idx += 1
+
+    result = Image.fromarray(pixels, "RGBA")
+    if output_path:
+        result.save(output_path, format="PNG", optimize=False)
+    return result
+
+
+def dct_decode(image: Image.Image, block_size: int = 8) -> bytes:
+    """Recover bytes previously hidden by :func:`dct_encode`.
+
+    Auto-detects the strength (low/medium/high) by searching for the DCTS
+    magic + a self-consistent strength byte. Raises ``ValueError`` if nothing
+    is found.
+    """
+    if block_size <= 0 or block_size > 32:
+        raise ValueError("block_size must be in 1..32")
+
+    img = image.convert("RGBA")
+    pixels = np.array(img, dtype=np.uint8)
+    height, width = pixels.shape[:2]
+
+    blocks_x = width // block_size
+    blocks_y = height // block_size
+    if blocks_x == 0 or blocks_y == 0:
+        raise ValueError("image too small for the given block_size")
+
+    m = _dct_matrix(block_size)
+    m_t = m.T
+    cy, cx = DCT_EMBED_POS
+
+    lum = _luminance(pixels)
+    coeffs = np.empty(blocks_x * blocks_y, dtype=np.float64)
+    idx = 0
+    for by in range(blocks_y):
+        for bx in range(blocks_x):
+            y0 = by * block_size
+            x0 = bx * block_size
+            block = lum[y0 : y0 + block_size, x0 : x0 + block_size]
+            dct_block = m @ block @ m_t
+            coeffs[idx] = dct_block[cy, cx]
+            idx += 1
+
+    def decode_at(strength: int) -> np.ndarray:
+        q = np.floor(coeffs / strength)
+        remainder = coeffs - q * strength
+        return (remainder >= strength / 2).astype(np.uint8)
+
+    def bits_to_bytes(bits: np.ndarray) -> bytes:
+        pad = (-len(bits)) % 8
+        if pad:
+            bits = np.concatenate([bits, np.zeros(pad, dtype=np.uint8)])
+        return np.packbits(bits).tobytes()
+
+    for strength in (DCT_STRENGTHS["low"], DCT_STRENGTHS["medium"], DCT_STRENGTHS["high"]):
+        bits = decode_at(strength)
+        as_bytes = bits_to_bytes(bits)
+        if len(as_bytes) < DCT_HEADER_SIZE:
+            continue
+        if as_bytes[:4] != DCT_MAGIC:
+            continue
+        header_strength = as_bytes[4]
+        if header_strength != strength:
+            continue
+        length = struct.unpack(">I", as_bytes[5:9])[0]
+        if length > len(as_bytes) - DCT_HEADER_SIZE or length > 10_000_000:
+            continue
+        return as_bytes[DCT_HEADER_SIZE : DCT_HEADER_SIZE + length]
+
+    raise ValueError("no DCT steganography header found")
+
+
+def dct_capacity(image: Image.Image, block_size: int = 8) -> Dict[str, Any]:
+    """Report how many payload bytes fit in ``image`` under DCT embedding."""
+    if block_size <= 0 or block_size > 32:
+        raise ValueError("block_size must be in 1..32")
+    width, height = image.size
+    blocks_x = width // block_size
+    blocks_y = height // block_size
+    capacity_bits = blocks_x * blocks_y
+    usable_bytes = max(0, capacity_bits // 8 - DCT_HEADER_SIZE)
+    return {
+        "dimensions": (width, height),
+        "block_size": block_size,
+        "blocks": (blocks_x, blocks_y),
+        "capacity_bits": capacity_bits,
+        "header_bytes": DCT_HEADER_SIZE,
+        "usable_bytes": usable_bytes,
+        "human": _human_readable_size(usable_bytes),
+    }
+
+
+# ============== PVD STEGANOGRAPHY (Pixel Value Differencing, Wu-Tsai 2003) ==============
+#
+# Port of the textbook Wu & Tsai (2003) PVD algorithm implemented in the
+# HTML/JS UI at ``index.html`` (see the ``pvdEncode`` / ``pvdDecode`` block
+# around line 8411). Bit-identical to the JS version for the ``wu-tsai``,
+# ``wide``, and ``narrow`` range tables so messages encoded in one can be
+# decoded in the other.
+#
+# .. warning::
+#     ``direction='both'`` inherits a subtle bug from the JS
+#     implementation: horizontal embedding mutates pixels that the
+#     vertical pass then re-reads, so when a payload spills into the
+#     vertical pass the diffs seen at decode differ from the diffs the
+#     encoder used, and decode fails. ``pvd_capacity_bits`` therefore
+#     reports max(horizontal, vertical) rather than the sum. ``both`` is
+#     preserved for cross-compatibility with existing JS artifacts; new
+#     hides should prefer ``horizontal`` or ``vertical``.
+
+
+@dataclass(frozen=True)
+class PvdRange:
+    lower: int
+    upper: int
+    bits: int
+
+
+PVD_RANGES: Dict[str, Tuple['PvdRange', ...]] = {
+    "wu-tsai": (
+        PvdRange(0, 7, 3),
+        PvdRange(8, 15, 3),
+        PvdRange(16, 31, 4),
+        PvdRange(32, 63, 5),
+        PvdRange(64, 127, 6),
+        PvdRange(128, 255, 7),
+    ),
+    "wide": (
+        PvdRange(0, 15, 4),
+        PvdRange(16, 47, 5),
+        PvdRange(48, 111, 6),
+        PvdRange(112, 255, 7),
+    ),
+    "narrow": (
+        PvdRange(0, 3, 2),
+        PvdRange(4, 7, 2),
+        PvdRange(8, 15, 3),
+        PvdRange(16, 31, 4),
+        PvdRange(32, 63, 5),
+        PvdRange(64, 127, 6),
+        PvdRange(128, 255, 7),
+    ),
+}
+
+
+def find_pvd_range(diff: int, ranges) -> 'PvdRange':
+    """Return the PVD bucket whose [lower, upper] contains ``|diff|``.
+
+    Falls back to the last bucket if nothing matches (matches JS).
+    """
+    abs_diff = abs(diff)
+    for r in ranges:
+        if r.lower <= abs_diff <= r.upper:
+            return r
+    return ranges[-1]
+
+
+def _pvd_horizontal_pairs(width: int, height: int):
+    """(idx1, idx2) pairs for ``col, col+1`` walking row-major."""
+    pairs_per_row = width // 2
+    for row in range(height):
+        base = row * width
+        for k in range(pairs_per_row):
+            col = k * 2
+            yield base + col, base + col + 1
+
+
+def _pvd_vertical_pairs(width: int, height: int):
+    """(idx1, idx2) pairs for ``row, row+1`` walking column-major."""
+    row_pairs = height // 2
+    for k in range(row_pairs):
+        row = k * 2
+        for col in range(width):
+            yield row * width + col, (row + 1) * width + col
+
+
+def _pvd_pair_iter(direction: str, width: int, height: int):
+    if direction == "horizontal":
+        yield from _pvd_horizontal_pairs(width, height)
+    elif direction == "vertical":
+        yield from _pvd_vertical_pairs(width, height)
+    elif direction == "both":
+        yield from _pvd_horizontal_pairs(width, height)
+        yield from _pvd_vertical_pairs(width, height)
+    else:
+        raise ValueError(f"unknown direction '{direction}' (use horizontal|vertical|both)")
+
+
+def _pvd_bytes_to_bits(data: bytes) -> List[int]:
+    bits: List[int] = []
+    for byte in data:
+        for i in range(7, -1, -1):
+            bits.append((byte >> i) & 1)
+    return bits
+
+
+def _pvd_bits_to_bytes(bits, length: int) -> bytes:
+    out = bytearray(length)
+    for i in range(length):
+        byte = 0
+        for b in range(8):
+            idx = i * 8 + b
+            if idx < len(bits):
+                byte = (byte << 1) | (bits[idx] & 1)
+            else:
+                byte <<= 1
+        out[i] = byte
+    return bytes(out)
+
+
+def pvd_capacity_bits(image: Image.Image, direction: str = "horizontal", range_type: str = "wu-tsai") -> int:
+    """Upper-bound PVD capacity in bits for the given carrier and settings.
+
+    For ``direction='both'`` reports the ``max`` of the horizontal and
+    vertical pass capacities (not the sum) because the two passes are
+    not independently decodable -- see the section docstring.
+    """
+    if range_type not in PVD_RANGES:
+        raise ValueError(f"unknown range_type '{range_type}'")
+    ranges = PVD_RANGES[range_type]
+    rgb = np.asarray(image.convert("RGB"), dtype=np.int16)
+    height, width = rgb.shape[:2]
+    flat = rgb.reshape(-1, 3)
+
+    def _sum(pairs):
+        total = 0
+        for idx1, idx2 in pairs:
+            for c in range(3):
+                diff = int(flat[idx1, c]) - int(flat[idx2, c])
+                total += find_pvd_range(diff, ranges).bits
+        return total
+
+    if direction == "both":
+        return max(_sum(_pvd_horizontal_pairs(width, height)),
+                   _sum(_pvd_vertical_pairs(width, height)))
+    return _sum(_pvd_pair_iter(direction, width, height))
+
+
+def pvd_capacity_bytes(image: Image.Image, direction: str = "horizontal", range_type: str = "wu-tsai") -> int:
+    """Usable PVD payload bytes (subtracts the 4-byte length header)."""
+    bits = pvd_capacity_bits(image, direction=direction, range_type=range_type)
+    return max(0, (bits // 8) - 4)
+
+
+def pvd_encode(
+    image: Image.Image,
+    payload: bytes,
+    direction: str = "horizontal",
+    range_type: str = "wu-tsai",
+) -> Image.Image:
+    """Hide ``payload`` in ``image`` via PVD; return a new RGB PIL image.
+
+    Raises ``ValueError`` if the payload does not fit.
+    """
+    if range_type not in PVD_RANGES:
+        raise ValueError(f"unknown range_type '{range_type}'")
+    if len(payload) > 0xFFFFFFFF:
+        raise ValueError("payload too large for 32-bit length header")
+
+    ranges = PVD_RANGES[range_type]
+    header = len(payload).to_bytes(4, "big")
+    bits = _pvd_bytes_to_bits(header + payload)
+
+    rgb = np.asarray(image.convert("RGB"), dtype=np.int16).copy()
+    height, width = rgb.shape[:2]
+    flat = rgb.reshape(-1, 3)
+
+    bit_index = 0
+    total_bits = len(bits)
+
+    for idx1, idx2 in _pvd_pair_iter(direction, width, height):
+        if bit_index >= total_bits:
+            break
+        for c in range(3):
+            if bit_index >= total_bits:
+                break
+            p1 = int(flat[idx1, c])
+            p2 = int(flat[idx2, c])
+            diff = p1 - p2
+            r = find_pvd_range(diff, ranges)
+
+            bits_to_embed = min(r.bits, total_bits - bit_index)
+            embed_value = 0
+            for _ in range(bits_to_embed):
+                embed_value = (embed_value << 1) | bits[bit_index]
+                bit_index += 1
+            # Pad tail with zeros exactly like the JS side does.
+            embed_value <<= (r.bits - bits_to_embed)
+
+            new_diff = r.lower + embed_value
+            signed_new_diff = new_diff if diff >= 0 else -new_diff
+            delta = signed_new_diff - diff
+
+            # ceil(delta/2) and floor(delta/2) that match Math.ceil / Math.floor
+            # for negative numbers (round toward +/-infinity, not toward zero).
+            if delta >= 0:
+                inc1 = (delta + 1) // 2   # ceil
+                dec2 = delta // 2         # floor
+            else:
+                inc1 = -((-delta) // 2)   # ceil of negative
+                dec2 = -((-delta + 1) // 2)  # floor of negative
+
+            new_p1 = p1 + inc1
+            new_p2 = p2 - dec2
+
+            # Shift both pixels back into [0,255] while preserving the diff.
+            if new_p1 < 0:
+                new_p2 += -new_p1
+                new_p1 = 0
+            if new_p2 < 0:
+                new_p1 += -new_p2
+                new_p2 = 0
+            if new_p1 > 255:
+                new_p2 -= new_p1 - 255
+                new_p1 = 255
+            if new_p2 > 255:
+                new_p1 -= new_p2 - 255
+                new_p2 = 255
+
+            # Final safety clamp (matches JS).
+            new_p1 = max(0, min(255, new_p1))
+            new_p2 = max(0, min(255, new_p2))
+
+            flat[idx1, c] = new_p1
+            flat[idx2, c] = new_p2
+
+    if bit_index < total_bits:
+        raise ValueError(
+            f"payload does not fit: needed {total_bits} bits, embedded {bit_index}. "
+            f"Try direction='both' or a wider range table."
+        )
+
+    encoded = rgb.astype(np.uint8)
+    return Image.fromarray(encoded, mode="RGB")
+
+
+def pvd_decode(
+    image: Image.Image,
+    direction: str = "horizontal",
+    range_type: str = "wu-tsai",
+    max_payload: int = 1_000_000,
+) -> bytes:
+    """Recover a PVD-hidden payload from ``image``.
+
+    Reads the 32-bit big-endian length header, then extracts the
+    corresponding number of payload bytes. Raises ``ValueError`` when
+    the header is missing or the reported length exceeds ``max_payload``.
+    """
+    if range_type not in PVD_RANGES:
+        raise ValueError(f"unknown range_type '{range_type}'")
+    ranges = PVD_RANGES[range_type]
+
+    rgb = np.asarray(image.convert("RGB"), dtype=np.int16)
+    height, width = rgb.shape[:2]
+    flat = rgb.reshape(-1, 3)
+
+    bits: List[int] = []
+    header_bits = 32
+    length: Optional[int] = None
+    needed_bits = header_bits
+
+    for idx1, idx2 in _pvd_pair_iter(direction, width, height):
+        if length is not None and len(bits) >= needed_bits:
+            break
+        for c in range(3):
+            p1 = int(flat[idx1, c])
+            p2 = int(flat[idx2, c])
+            diff = abs(p1 - p2)
+            r = find_pvd_range(diff, ranges)
+            embed_value = diff - r.lower
+            for b in range(r.bits - 1, -1, -1):
+                bits.append((embed_value >> b) & 1)
+
+            if length is None and len(bits) >= header_bits:
+                length = 0
+                for i in range(header_bits):
+                    length = (length << 1) | bits[i]
+                if length < 0 or length > max_payload:
+                    raise ValueError(
+                        f"invalid PVD length header: {length} "
+                        f"(max_payload={max_payload}). Wrong direction or range table?"
+                    )
+                needed_bits = header_bits + length * 8
+
+            if length is not None and len(bits) >= needed_bits:
+                break
+
+    if length is None:
+        raise ValueError("carrier too small to contain a PVD length header")
+    if len(bits) < 32 + length * 8:
+        raise ValueError(
+            f"carrier ran out of bits before payload finished: "
+            f"got {len(bits)} bits, needed {32 + length * 8}"
+        )
+
+    payload_bits = bits[header_bits : header_bits + length * 8]
+    return _pvd_bits_to_bytes(payload_bits, length)
+
+
+# ============== F5 JPEG DCT Steganography ==============
+#
+# Wrappers around :class:`f5_core.F5Stegg` that follow the same shape as
+# the PVD and DCT families above.  Unlike those families, F5 operates on
+# raw JPEG bytes (not a :class:`PIL.Image.Image`) because it needs the
+# quantized DCT coefficients from the JPEG bitstream.
+#
+# *data* accepts a file path (``str``) or raw JPEG ``bytes``.
+# *payload* accepts a ``str`` (encoded as UTF-8) or raw ``bytes``.
+#
+# The password string is encoded to UTF-8 internally — callers that need
+# raw byte keys import ``F5Stegg`` directly.
+
+
+def _to_bytes(data: str | bytes) -> bytes:
+    """Normalise *data* to ``bytes`` — accepts a file path or raw bytes."""
+    if isinstance(data, str):
+        return Path(data).read_bytes()
+    if isinstance(data, bytes):
+        return data
+    raise TypeError(f"expected str (file path) or bytes, got {type(data).__name__}")
+
+
+def _payload_to_bytes(payload: str | bytes) -> bytes:
+    """Normalise *payload* to ``bytes`` — accepts a string or raw bytes."""
+    if isinstance(payload, str):
+        return payload.encode("utf-8")
+    if isinstance(payload, bytes):
+        return payload
+    raise TypeError(f"expected str or bytes, got {type(payload).__name__}")
+
+
+def f5_encode(data: str | bytes, payload: str | bytes, *, password: str) -> bytes:
+    """Embed *payload* into a JPEG via the F5 algorithm.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.F5Error`
+    (or a subclass) on failure.
+    """
+    from m3gast3gg.core.f5 import F5Stegg
+
+    jpeg_bytes = _to_bytes(data)
+    payload_bytes = _payload_to_bytes(payload)
+    s = F5Stegg(password.encode("utf-8"))
+    return s.embed(jpeg_bytes, payload_bytes)
+
+
+def f5_decode(data: str | bytes, *, password: str) -> bytes:
+    """Recover an F5-hidden payload from a JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
+    on wrong key or corrupt data.
+    """
+    from m3gast3gg.core.f5 import F5Stegg
+
+    jpeg_bytes = _to_bytes(data)
+    s = F5Stegg(password.encode("utf-8"))
+    return s.extract(jpeg_bytes)
+
+
+def f5_capacity(data: str | bytes) -> dict:
+    """Analyse a JPEG for F5 capacity without modifying it.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns a dict with keys ``capacity`` (list, index 1..16), ``coeff_total``,
+    ``coeff_large``, ``coeff_zero``, ``coeff_one``, and ``coeff_one_ratio``.
+    """
+    from m3gast3gg.core.f5 import F5Stegg
+
+    jpeg_bytes = _to_bytes(data)
+    # analyse is key-agnostic — a dummy key satisfies the constructor.
+    s = F5Stegg(b"\x00")
+    return s.analyze(jpeg_bytes)
+
+
+def f5_capacity_bytes(data: str | bytes, *, k: int | None = None) -> int:
+    """Usable F5 payload bytes at matrix-encoding parameter ``k``.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    When ``k`` is *None* (the default), returns the capacity at the
+    highest ``k`` that fits, matching the auto-selection behaviour of
+    :func:`f5_encode`.  When ``k`` is given explicitly (1..16), returns
+    the capacity for that ``k``.
+
+    This mirrors :func:`pvd_capacity_bytes` (usable payload bytes).
+    """
+    cap = f5_capacity(data)
+    capacities = cap["capacity"]  # list, index 0 unused
+    if k is not None:
+        if not (1 <= k <= 16):
+            raise ValueError(f"k must be in 1..16, got {k}")
+        return max(0, capacities[k])
+    # Auto: return max capacity (k=1). The embedding path auto-selects k
+    # based on actual payload size, but for the "how much fits?" question
+    # the most useful answer is the largest possible payload.
+    return max(capacities[1:])
+
+
+# ============== JSteg JPEG DCT ==============
+
+
+def jsteg_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* into a JPEG via JSteg (LSB of nonzero DCT coefficients).
+
+    JSteg is the simplest JPEG steg algorithm: sequentially replaces LSBs of
+    nonzero AC coefficients, skipping 0 and ±1 to avoid shrinkage.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    Returns the modified JPEG as ``bytes``.  Raises :exc:`f5_core.CapacityExceeded`
+    if the payload does not fit.
+    """
+    from m3gast3gg.core.f5.jsteg import jsteg_encode as _encode
+
+    jpeg_bytes = _to_bytes(data)
+    payload_bytes = _payload_to_bytes(payload)
+    return _encode(jpeg_bytes, payload_bytes)
+
+
+def jsteg_decode(data: str | bytes) -> bytes:
+    """Recover a JSteg-hidden payload from a JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns the extracted ``bytes``.  Raises :exc:`f5_core.ExtractionFailed`
+    if the length prefix is corrupt or the carrier is unmodified.
+    """
+    from m3gast3gg.core.f5.jsteg import jsteg_decode as _decode
+
+    return _decode(_to_bytes(data))
+
+
+def jsteg_capacity(data: str | bytes) -> dict:
+    """Analyse a JPEG for JSteg capacity.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+
+    Returns a dict with keys ``usable_coefficients``, ``usable_bytes``, and
+    ``max_payload_bytes`` (accounting for the 4-byte length prefix).
+    """
+    from m3gast3gg.core.f5.jsteg import jsteg_capacity as _cap
+
+    return _cap(_to_bytes(data))
+
+
+def jsteg_capacity_bytes(data: str | bytes) -> int:
+    """Maximum JSteg payload bytes that fit in this JPEG.
+
+    *data* may be a file path (``str``) or raw JPEG ``bytes``.
+    """
+    cap = jsteg_capacity(data)
+    return cap["max_payload_bytes"]
+
+
+# ============== PNG chunk I/O ==============
+#
+# Low-level PNG chunk manipulation (tEXt / zTXt / iTXt / private chunks) and
+# PIL-based metadata injection. Previously lived in ``injector.py``; moved here
+# because they are image-level operations that manipulate PNG binary structure
+# alongside the LSB, DCT, and analysis code above.
+
+def _make_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    """Create a PNG chunk with proper CRC"""
+    chunk_len = struct.pack('>I', len(data))
+    chunk_crc = struct.pack('>I', zlib.crc32(chunk_type + data) & 0xffffffff)
+    return chunk_len + chunk_type + data + chunk_crc
+
+
+def inject_text_chunk(image_data: bytes, keyword: str, text: str, compressed: bool = False) -> bytes:
+    """Inject a tEXt or zTXt chunk into PNG data."""
+    iend_pos = image_data.rfind(b'IEND')
+    if iend_pos == -1:
+        raise ValueError("Invalid PNG: IEND chunk not found")
+    iend_pos -= 4  # include length field
+
+    if compressed:
+        chunk_type = b'zTXt'
+        compressed_text = zlib.compress(text.encode('latin-1'))
+        chunk_data = keyword.encode('latin-1') + b'\x00\x00' + compressed_text
+    else:
+        chunk_type = b'tEXt'
+        chunk_data = keyword.encode('latin-1') + b'\x00' + text.encode('latin-1')
+
+    new_chunk = _make_chunk(chunk_type, chunk_data)
+    return image_data[:iend_pos] + new_chunk + image_data[iend_pos:]
+
+
+def inject_itxt_chunk(image_data: bytes, keyword: str, text: str, language: str = "", translated_keyword: str = "") -> bytes:
+    """Inject an iTXt (international text, UTF-8) chunk into PNG data."""
+    iend_pos = image_data.rfind(b'IEND') - 4
+
+    chunk_data = (
+        keyword.encode('latin-1') + b'\x00' +
+        b'\x00' +  # compression flag
+        b'\x00' +  # compression method
+        language.encode('latin-1') + b'\x00' +
+        translated_keyword.encode('utf-8') + b'\x00' +
+        text.encode('utf-8')
+    )
+
+    new_chunk = _make_chunk(b'iTXt', chunk_data)
+    return image_data[:iend_pos] + new_chunk + image_data[iend_pos:]
+
+
+def inject_private_chunk(image_data: bytes, chunk_type: str, data: bytes) -> bytes:
+    """Inject a private/custom 4-character chunk into PNG data."""
+    if len(chunk_type) != 4:
+        raise ValueError("Chunk type must be exactly 4 characters")
+
+    iend_pos = image_data.rfind(b'IEND') - 4
+    new_chunk = _make_chunk(chunk_type.encode('latin-1'), data)
+    return image_data[:iend_pos] + new_chunk + image_data[iend_pos:]
+
+
+def read_png_chunks(image_data: bytes) -> List[Dict]:
+    """Read all chunks from PNG data."""
+    if image_data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError("Invalid PNG signature")
+
+    chunks: List[Dict] = []
+    pos = 8
+    while pos < len(image_data):
+        length = struct.unpack('>I', image_data[pos:pos + 4])[0]
+        chunk_type = image_data[pos + 4:pos + 8].decode('latin-1')
+        chunk_data = image_data[pos + 8:pos + 8 + length]
+
+        chunk_info: Dict = {
+            "type": chunk_type,
+            "length": length,
+            "position": pos,
+        }
+
+        if chunk_type == 'tEXt':
+            null_pos = chunk_data.find(b'\x00')
+            chunk_info["keyword"] = chunk_data[:null_pos].decode('latin-1')
+            chunk_info["text"] = chunk_data[null_pos + 1:].decode('latin-1')
+        elif chunk_type == 'zTXt':
+            null_pos = chunk_data.find(b'\x00')
+            chunk_info["keyword"] = chunk_data[:null_pos].decode('latin-1')
+            chunk_info["text"] = zlib.decompress(chunk_data[null_pos + 2:]).decode('latin-1')
+        elif chunk_type == 'iTXt':
+            null_pos = chunk_data.find(b'\x00')
+            chunk_info["keyword"] = chunk_data[:null_pos].decode('latin-1')
+            rest = chunk_data[null_pos + 1:]
+            chunk_info["compressed"] = rest[0] == 1
+            parts = rest[2:].split(b'\x00', 2)
+            if len(parts) >= 3:
+                chunk_info["language"] = parts[0].decode('latin-1')
+                chunk_info["translated_keyword"] = parts[1].decode('utf-8', errors='replace')
+                chunk_info["text"] = parts[2].decode('utf-8', errors='replace')
+
+        chunks.append(chunk_info)
+        pos += 12 + length
+        if chunk_type == 'IEND':
+            break
+    return chunks
+
+
+def extract_text_chunks(image_data: bytes) -> Dict[str, str]:
+    """Extract all text chunks (keyword -> text) from PNG."""
+    chunks = read_png_chunks(image_data)
+    texts: Dict[str, str] = {}
+    for chunk in chunks:
+        if chunk["type"] in ('tEXt', 'zTXt', 'iTXt') and "keyword" in chunk:
+            texts[chunk["keyword"]] = chunk.get("text", "")
+    return texts
+
+
+def inject_metadata_pil(
+    image: Image.Image,
+    metadata: Dict[str, str],
+    output_path: Optional[str] = None,
+) -> Tuple[Image.Image, bytes]:
+    """Inject metadata into image using PIL's PngInfo."""
+    png_info = PngInfo()
+    for key, value in metadata.items():
+        png_info.add_text(key, value)
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", pnginfo=png_info)
+    png_bytes = buffer.getvalue()
+
+    if output_path:
+        with open(output_path, 'wb') as f:
+            f.write(png_bytes)
+    return image, png_bytes
+
+
+# ============== CONTAINER SMUGGLING ==============
+#
+# APNG frame smuggling, GIF comment/extension embedding, and polyglot
+# concatenation helpers.  These complement the existing carve/decode
+# paths in analysis_tools.
+#
+# All functions accept file paths (``str``) or raw ``bytes`` for carrier
+# data, and ``str`` (UTF-8 encoded) or raw ``bytes`` for payloads.
+
+
+def gif_comment_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* into GIF comment extension blocks.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    GIF89a comment extensions (0x21 0xFE) are arbitrary, renderer-ignored
+    blocks.  The payload is chunked into 255-byte sub-blocks (GIF's max
+    sub-block size).  Returns the modified GIF as ``bytes``.
+    """
+    gif_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+    if len(gif_bytes) < 6 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    # Insert comment extension after the screen descriptor (first 13 bytes
+    # for GIF89a/GIF87a) but before the first image descriptor (0x2C) or
+    # extension block.
+    header = gif_bytes[:13]
+    rest = gif_bytes[13:]
+
+    # Build comment extension: 0x21 0xFE <sub-blocks...> 0x00
+    comment = bytearray([0x21, 0xFE])
+    for offset in range(0, len(payload), 255):
+        chunk = payload[offset : offset + 255]
+        comment.append(len(chunk))
+        comment.extend(chunk)
+    comment.append(0x00)  # block terminator
+
+    return header + bytes(comment) + rest
+
+
+def gif_palette_lsb_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Embed *payload* in the LSBs of GIF palette entries (if present).
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    The payload is prefixed with a 2-byte big-endian length header so
+    :func:`gif_palette_lsb_decode` knows how many bytes to extract.
+    """
+    gif_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+    if len(gif_bytes) < 13 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    # Frame: 4-byte BE length + payload (same convention as audio_lsb, jsteg).
+    framed = struct.pack(">I", len(payload)) + payload
+
+    packed = gif_bytes[10]
+    if not (packed & 0x80):
+        raise ValueError("GIF has no global colour table")
+    palette_entries = 2 ** ((packed & 0x07) + 1)
+    palette_bytes = palette_entries * 3  # RGB triplets
+    palette_start = 13
+    palette_end = palette_start + palette_bytes
+
+    if palette_end > len(gif_bytes):
+        raise ValueError("GIF truncated in global colour table")
+
+    bits_needed = len(framed) * 8
+    if bits_needed > palette_bytes:
+        raise ValueError(
+            f"payload needs {bits_needed} bits but palette has only "
+            f"{palette_bytes} bytes ({palette_entries} entries)"
+        )
+
+    # Flatten payload bits MSB-first (matching audio_lsb_encode convention).
+    payload_bits: list[int] = []
+    for byte_val in framed:
+        for shift in range(7, -1, -1):
+            payload_bits.append((byte_val >> shift) & 1)
+
+    result = bytearray(gif_bytes)
+    for i in range(bits_needed):
+        if payload_bits[i] != (result[palette_start + i] & 1):
+            result[palette_start + i] ^= 1  # flip LSB
+
+    return bytes(result)
+
+
+def gif_comment_decode(data: str | bytes) -> bytes:
+    """Extract payload from GIF comment extension blocks.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+
+    Finds all comment extension blocks (0x21 0xFE), concatenates their
+    sub-blocks, and returns the combined payload.  Returns empty bytes
+    if no comment extensions are present.
+    """
+    gif_bytes = _to_bytes(data)
+    if len(gif_bytes) < 6 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    payload = bytearray()
+    pos = 13  # skip header + screen descriptor
+    n = len(gif_bytes)
+
+    while pos < n - 1:
+        if gif_bytes[pos] == 0x21 and gif_bytes[pos + 1] == 0xFE:
+            pos += 2  # skip extension introducer + comment label
+            # Read sub-blocks.
+            while pos < n:
+                block_len = gif_bytes[pos]
+                pos += 1
+                if block_len == 0:
+                    break  # block terminator
+                if pos + block_len > n:
+                    break
+                payload.extend(gif_bytes[pos:pos + block_len])
+                pos += block_len
+        elif gif_bytes[pos] == 0x21:
+            # Skip other extension blocks.
+            pos += 2
+            while pos < n:
+                block_len = gif_bytes[pos]
+                pos += 1
+                if block_len == 0:
+                    break
+                if pos + block_len > n:
+                    break
+                pos += block_len
+        elif gif_bytes[pos] == 0x2C:
+            break  # image descriptor — stop
+        elif gif_bytes[pos] == 0x3B:
+            break  # trailer
+        else:
+            pos += 1
+
+    return bytes(payload)
+
+
+def gif_palette_lsb_decode(data: str | bytes) -> bytes:
+    """Extract payload from LSBs of a GIF's global colour table.
+
+    *data* may be a file path (``str``) or raw GIF ``bytes``.
+
+    Reads the 4-byte big-endian length prefix from palette LSBs, then
+    extracts that many payload bytes.  Returns empty bytes if no global
+    palette exists or the length prefix is invalid.
+    """
+    gif_bytes = _to_bytes(data)
+    if len(gif_bytes) < 13 or gif_bytes[:3] not in (b"GIF",):
+        raise ValueError("not a valid GIF")
+
+    packed = gif_bytes[10]
+    if not (packed & 0x80):
+        return b""  # no global colour table
+
+    palette_entries = 2 ** ((packed & 0x07) + 1)
+    palette_bytes = palette_entries * 3
+    palette_start = 13
+    palette_end = palette_start + palette_bytes
+    if palette_end > len(gif_bytes):
+        return b""
+
+    # Read all available LSBs from palette.
+    bits: list[int] = []
+    for i in range(palette_start, palette_end):
+        bits.append(gif_bytes[i] & 1)
+
+    # Convert bits to bytes.
+    raw = bytearray()
+    for i in range(0, len(bits) // 8 * 8, 8):
+        v = 0
+        for j in range(8):
+            v = (v << 1) | bits[i + j]
+        raw.append(v)
+
+    # Parse 4-byte BE length prefix (same convention as audio_lsb, jsteg).
+    if len(raw) < 4:
+        return b""
+    payload_len = struct.unpack(">I", bytes(raw[:4]))[0]
+    if payload_len > len(raw) - 4:
+        return b""
+    return bytes(raw[4 : 4 + payload_len])
+
+
+# ---------------------------------------------------------------------------
+# APNG smuggling — acTL / fcTL / fdAT chunk assembly
+# ---------------------------------------------------------------------------
+
+
+def apng_fdat_encode(data: str | bytes, payload: str | bytes) -> bytes:
+    """Hide *payload* as a stray ``fdAT`` chunk in an APNG.
+
+    *data* may be a file path (``str``) or raw PNG ``bytes``.
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+
+    Adds an ``acTL`` chunk (declaring 1 frame), an ``fcTL`` chunk for
+    frame 0, and an orphaned ``fdAT`` chunk containing the raw payload
+    bytes.  No ``fcTL`` references ``fdAT``'s sequence number, so APNG
+    renderers ignore it — only :func:`apng_fdat_decode` sees it.
+    """
+    png_bytes = _to_bytes(data)
+    payload = _payload_to_bytes(payload)
+
+    # Validate PNG signature.
+    if png_bytes[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError("not a valid PNG")
+    sig = png_bytes[:8]
+    rest = png_bytes[8:]
+
+    # IHDR is always the first chunk (25 bytes: 4 len + 4 type + 13 data + 4 crc).
+    ihdr_end = 8 + 25
+    before = png_bytes[:ihdr_end]
+    after_ihdr = png_bytes[ihdr_end:]
+
+    # Read image dimensions from IHDR for fcTL.
+    ihdr_data = png_bytes[16:ihdr_end - 4]  # 13 bytes of IHDR data
+    width = struct.unpack('>I', ihdr_data[0:4])[0]
+    height = struct.unpack('>I', ihdr_data[4:8])[0]
+
+    # acTL: 1 frame, infinite loop (0).
+    actl = _make_chunk(b'acTL', struct.pack('>II', 1, 0))
+
+    # fcTL for frame 0 (the original image).
+    fctl0 = _make_chunk(b'fcTL', struct.pack(
+        '>IIIIIHHBB',
+        0,          # sequence_number
+        width, height,
+        0, 0,        # x_offset, y_offset
+        0, 1,        # delay_num, delay_den (0/1 = no delay)
+        0,           # dispose_op: APNG_DISPOSE_OP_NONE
+        0,           # blend_op: APNG_BLEND_OP_SOURCE
+    ))
+
+    # fdAT: orphaned frame (sequence 1, no matching fcTL).
+    fdat = _make_chunk(b'fdAT', struct.pack('>I', 1) + payload)
+
+    # Insert: sig + IHDR + acTL + fcTL0 + [original chunks between IHDR and IEND] + fdAT
+    # Find IEND position for fdAT insertion.
+    iend_pos = after_ihdr.rfind(b'IEND')
+    if iend_pos == -1:
+        raise ValueError("invalid PNG: IEND chunk not found")
+    iend_pos -= 4  # back up past IEND's length field
+
+    return before + actl + fctl0 + after_ihdr[:iend_pos] + fdat + after_ihdr[iend_pos:]
+
+
+def apng_fdat_decode(data: str | bytes) -> bytes:
+    """Recover the payload from an APNG encoded by :func:`apng_fdat_encode`.
+
+    *data* may be a file path (``str``) or raw PNG ``bytes``.
+
+    Finds all ``fdAT`` chunks, strips the 4-byte sequence-number prefix
+    from each, and returns the concatenated payload.  Returns empty bytes
+    if no ``fdAT`` chunks are present.
+    """
+    png_bytes = _to_bytes(data)
+    payload_parts: list[bytes] = []
+    pos = 8  # skip PNG signature
+
+    while pos < len(png_bytes) - 12:
+        chunk_len = struct.unpack('>I', png_bytes[pos:pos + 4])[0]
+        chunk_type = png_bytes[pos + 4:pos + 8]
+        chunk_data_start = pos + 8
+        chunk_data = png_bytes[chunk_data_start:chunk_data_start + chunk_len]
+
+        if chunk_type == b'fdAT' and chunk_len >= 4:
+            # Strip the 4-byte sequence number.
+            payload_parts.append(chunk_data[4:])
+
+        pos += 12 + chunk_len
+        if chunk_type == b'IEND':
+            break
+
+    return b''.join(payload_parts)
+
+
+def polyglot_png_zip_encode(payload: str | bytes, cover_png: str | bytes) -> bytes:
+    """Create a PNG+ZIP polyglot: a PNG with a ZIP archive appended after IEND.
+
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+    *cover_png* may be a file path (``str``) or raw PNG ``bytes``.
+
+    The *payload* is stored inside a ZIP archive (using stdlib ``zipfile``)
+    and appended to *cover_png*.  The result is a valid PNG (renderers stop
+    at IEND) that also works as a valid ZIP (parsers seek to the EOCD
+    record at end-of-file).
+
+    Use :func:`polyglot_zip_png_encode` for the reverse (ZIP header first).
+    """
+    import zipfile
+    payload = _payload_to_bytes(payload)
+    cover_png = _to_bytes(cover_png)
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("payload.bin", payload)
+    zip_data = zip_buf.getvalue()
+
+    # Check for IEND chunk near the end. PNG files always end with IEND
+    # (length + type + CRC = 12 bytes), so the last 12 bytes contain IEND.
+    if len(cover_png) < 12 or cover_png[-8:-4] != b"IEND":
+        raise ValueError("cover_png does not have IEND chunk at expected position")
+    return cover_png + zip_data
+
+
+def polyglot_zip_png_encode(payload: str | bytes, cover_png: str | bytes) -> bytes:
+    """Create a ZIP+PNG polyglot: a ZIP archive with a PNG prepended.
+
+    *payload* may be a ``str`` (UTF-8 encoded) or raw ``bytes``.
+    *cover_png* may be a file path (``str``) or raw PNG ``bytes``.
+
+    The result is a valid ZIP (parsers read the EOCD at end-of-file) that
+    also displays as a PNG (tools that check magic bytes at offset 0).
+    """
+    import zipfile
+    payload = _payload_to_bytes(payload)
+    cover_png = _to_bytes(cover_png)
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("payload.bin", payload)
+    zip_data = zip_buf.getvalue()
+    return cover_png + zip_data
+
+
+# ============== LEGACY COMPATIBILITY ==============
+
+# Keep old function signatures working
+def encode_batch(
+    image: Image.Image,
+    data_list: List[bytes],
+    configs: List[StegConfig]
+) -> Image.Image:
+    """Encode multiple payloads with different configs (legacy)"""
+    result = image.copy()
+    for data, config in zip(data_list, configs):
+        result = encode(result, data, config)
+    return result

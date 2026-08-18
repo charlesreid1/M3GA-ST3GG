@@ -14,7 +14,7 @@ import io
 import pytest
 from PIL import Image
 
-from img_core import (
+from m3gast3gg.core.img import (
     DCT_HEADER_SIZE,
     DCT_MAGIC,
     DCT_STRENGTHS,

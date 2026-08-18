@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from st3ggmcp import records
-from st3ggmcp.tools import TOOL_EXECUTORS
+from m3gast3gg import records
+from m3gast3gg.mcp import TOOL_EXECUTORS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

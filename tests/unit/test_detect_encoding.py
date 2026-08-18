@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from img_core import (
+from m3gast3gg.core.img import (
     create_config,
     detect_encoding,
     encode,

@@ -336,7 +336,7 @@
     "aliases": ["st3gg-field-guide", "field_guide.md"],
     "kind": "repository-doc",
     "authors": ["AND!XOR"],
-    "location": "M3GA-ST3GG/st3ggmcp/field_guide.md",
+    "location": "M3GA-ST3GG/src/m3gast3gg/field_guide.md",
     "notes": "The 500-line persona + technique-catalog + heuristic + snippet monolith. Source for most of the initial techniques.json and signatures.json content."
   },
   {
@@ -348,7 +348,7 @@
     "aliases": ["transport-matrix"],
     "kind": "repository-doc",
     "authors": ["AND!XOR"],
-    "location": "M3GA-ST3GG/st3ggmcp/TRANSPORT_MATRIX.md",
+    "location": "M3GA-ST3GG/src/m3gast3gg/TRANSPORT_MATRIX.md",
     "notes": "Human-readable transport-survival matrix. Source for the initial transports.json and survival.json records."
   },
   {

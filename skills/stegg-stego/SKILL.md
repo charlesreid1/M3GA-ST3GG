@@ -9,7 +9,7 @@ HTTP MCP server exposing steganography tools across seven families — **triage*
 
 ## Server
 
-Streamable HTTP at `http://<host>:8765/mcp` after `pip install -e '.[mcp]' && stegg-mcp`. See `st3ggmcp/README.md` for stdio config, port flags, and auth caveats.
+Streamable HTTP at `http://<host>:8765/mcp` after `pip install -e . && m3gast3gg-mcp` (MCP is core; no extra needed). See the top-level `README.md` (Quick Start + entry points) for stdio config, port flags, and auth caveats.
 
 ## When to use this vs. `stegg-cli`
 

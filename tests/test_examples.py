@@ -54,7 +54,7 @@ print("=" * 70)
 print()
 
 try:
-    from analysis_tools import (
+    from m3gast3gg.core.analysis import (
         png_full_analysis, png_extract_text_chunks, png_detect_appended_data,
         png_steg_signature_scan, png_chi_square_analysis,
         detect_base64, detect_hex_strings, detect_unicode_steg,
@@ -78,7 +78,7 @@ except Exception as e:
     print(f"  [!!] PIL import error: {e}")
 
 try:
-    from img_core import analyze_image, detect_encoding, StegConfig, Channel
+    from m3gast3gg.core.img import analyze_image, detect_encoding, StegConfig, Channel
     print("  [OK] img_core imported")
 except Exception as e:
     print(f"  [!!] img_core import error: {e}")
@@ -1437,7 +1437,7 @@ print("-" * 70)
 
 # Import new detectors
 try:
-    from analysis_tools import (
+    from m3gast3gg.core.analysis import (
         detect_cyrillic_homoglyph_steg, detect_cjk_homoglyph_steg,
         detect_variation_selector_steg,
         detect_combining_mark_steg, detect_confusable_whitespace as detect_confusable_ws,
