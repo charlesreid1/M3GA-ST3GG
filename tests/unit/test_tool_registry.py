@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from analysis_tools import TOOL_REGISTRY, execute_action, list_available_tools
+from m3gast3gg.core.analysis import TOOL_REGISTRY, execute_action, list_available_tools
 
 
 # Tools we expect to be registered — from `_register_all_tools` and the

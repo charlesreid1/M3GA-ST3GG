@@ -15,7 +15,7 @@ import zipfile
 import pytest
 from PIL import Image
 
-from img_core import create_config, decode, encode
+from m3gast3gg.core.img import create_config, decode, encode
 
 pytestmark = pytest.mark.pipeline
 

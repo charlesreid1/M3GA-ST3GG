@@ -80,6 +80,21 @@ Every tool takes JSON args and returns a JSON-serialized string. Image/text file
 | `stegg_jailbreak_list` | List available jailbreak templates with metadata (technique class, target models, tags). |
 | `stegg_transforms_list` | List registered text transforms from transforms_core — the set of names accepted by the `obfuscation` parameter on the jailbreak compose_text / compose_unicode_tag tools. |
 
+## Knowledge (records + prose corpus)
+
+| Tool | Description |
+| --- | --- |
+| `stegg_bibliography` | Resolve a bibliography entry by id, or list every source when called without arguments. |
+| `stegg_cross_reference` | Traverse a record's see_also links, returning the linked records' id/name/category. |
+| `stegg_explain_pipeline` | Return an ordered list of technique records that fit a goal. |
+| `stegg_list_topics` | List every topic in the prose corpus (`knowledge/<topic>/`) and the markdown files under each. |
+| `stegg_lookup_technique` | Look up a technique record by id, name, or alias. |
+| `stegg_read_lore` | Read a single prose file from the corpus. |
+| `stegg_search_lore` | Search the prose corpus for a term (case-insensitive substring / regex). |
+| `stegg_search_records` | Search the typed records with category / carrier_family / layer / transport filters. |
+| `stegg_verify_claim` | Grade a natural-language claim as `false` / `needs_qualification` / `unverified` against myths.json. |
+| `stegg_verify_survival` | Given a (technique, transport) pair, return the survival status (✅ / ❌ / ⚠ / ❓), the evidence pointer, tested_at date, and any caveats or workarounds. |
+
 ## Meta / capabilities
 
 | Tool | Description |
@@ -98,10 +113,36 @@ Notes:
 - `braille`, `emoji`, `skintone` append the payload as its own block after the cover (separated by `\n\n`) — visibly perturbed, not invisible.
 - Length-prefixed methods (`cyrillic_homoglyph`, `cjk_homoglyph`, `whitespace`, `variation`, `combining`, `confusable`, `hangul`, `mathbold`, `capitalization`) raise `TextStegCapacityError` on undersized covers — use `stegg_text_capacity` first when the cover might be too small.
 
-## Resource
+## Knowledge base
+
+The **Knowledge (records + prose corpus)** family exposes the typed KR under `knowledge/records/*.json` and the prose corpus under `knowledge/<topic>/`. Every record carries a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` at startup — the server cannot boot with a bad record. Design notes and manifest: `knowledge/MANIFEST.md`, `knowledge/records/README.md`, and `plan-knowledge-base.md`.
+
+Record categories (`knowledge/records/`):
+
+| File | Category | What it holds |
+| --- | --- | --- |
+| `bibliography.json` | `bibliography` | Every source anything else cites (RFCs, papers, repo docs). |
+| `techniques.json` | `technique` | One record per encode/decode method with numeric `technical_body`. |
+| `carrier_formats.json` | `carrier_format` | Format specs: PNG chunks, JPEG DCT, WAV RIFF, PCAP frames. |
+| `layers.json` | `layer` | The five canonical steg layers + normalization behavior. |
+| `transports.json` | `transport` | Delivery channels with `canonical_layer`, `known_strips[]`, `known_recodes[]`. |
+| `survival.json` | `survival` | (technique, transport) cells with `status ∈ {✅, ❌, ⚠, ❓}` + evidence. Regenerates `TRANSPORT_MATRIX.md`. |
+| `detectors.json` | `detector` | Chi-square, RS, sample-pairs, bit-plane entropy, F5 sig, PVD detector. |
+| `signatures.json` | `signature` | "If you see X, technique is probably Y" pattern-diagnosis records (with Python snippets where they clarify). |
+| `myths.json` | `myth` | Explicit false claims (powers `stegg_verify_claim`). |
+| `capacity_models.json` | `capacity_model` | Per-technique capacity formulas + worked examples (LSB / PVD / DCT / F5 / jsteg + eight text methods). |
+| `external_tools.json` | `external_tool` | steghide, jsteg, outguess, zsteg, stegdetect, binwalk, foremost, StegExpose, Aletheia, ExifTool with capability + interop notes. |
+| `ctf_genres.json` | `ctf_genre` | Compound-technique catalog: matryoshka, chained-carrier, polyglot-injection, spectrogram, unicode-tag-jailbreak, alpha-channel, PNG private-chunk. |
+
+Response envelope: every knowledge tool that returns a single record wraps it with `{citations, era_bounds, carrier_family, confidence}` so downstream code can trust or discard the answer without re-reading the record.
+
+## Resources
 
 ### `stegg://field-guide`
-The ST3GG persona document: technique catalog, signal-reading heuristics, extraction workflow, verdict semantics, code snippets, transport-survival tables. Fetch via `read_resource(stegg://field-guide)`.
+The ST3GG persona document: persona layers, mode gate, dispatch tables, verdict semantics, response format. Under 300 lines. Fetch via `read_resource(stegg://field-guide)`. The material this file used to inline (technique catalog, per-method framing, transport-survival tables, pattern-diagnosis snippets) lives in the typed KR — reach for `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_search_records(category="signature")` instead.
+
+### `stegg://<topic>/<name>`
+Every markdown file under `knowledge/<topic>/` is auto-exposed as an MCP resource, at any depth. Enumerate with `stegg_list_topics`; fetch with `stegg_read_lore(topic, name)` or `read_resource(stegg://<topic>/<name>)`. Topic READMEs as of this doc: `image`, `text`, `emoji`, `audio`, `network`, `document`, `detection`, `transport`, `crypto`, `ctf`. Per-technique deep splits (`README` + `reference` + `walkthrough` + `recognition`) exist under `image/lsb/`, `image/f5/`, `text/zero-width/`, `text/homoglyph-cyrillic/` — reachable as `stegg://image/lsb/reference` and so on.
 
 ## Errors
 

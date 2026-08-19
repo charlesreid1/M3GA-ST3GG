@@ -15,8 +15,7 @@ different project.
 
 ## Requirements
 
-- Python 3.10+ (the repo's `vp/` venv is built against 3.10; `pyproject.toml`
-  declares `>=3.9`, but the shipped venv is 3.10 and CI runs against 3.10+)
+- Python 3.10 – 3.12 (declared as `requires-python = ">=3.10,<3.13"`)
 - `git`
 - A working C toolchain if you enable the `jpeg` extra (`jpeglib` builds a
   native wheel on most platforms; on macOS this is Xcode CLT)
@@ -30,61 +29,53 @@ git clone git@github.com:charlesreid1/M3GA-ST3GG.git
 cd M3GA-ST3GG
 
 # Create a venv in the repo root. The project's convention is a visible
-# `venv/` (or the pre-existing `vp/`). Do not hide it in `.venv`.
+# `venv/`. Do not hide it in `.venv`.
 python3 -m venv venv
 source venv/bin/activate
 
-# Editable install so local edits take effect without reinstalling.
-pip install -e .              # core CLI only
-pip install -e '.[mcp]'       # + MCP server (HTTP + stdio)
-pip install -e '.[all]'       # everything: web UI, crypto, MCP, jpeg, pdf, metadata
+# Editable install. MCP is core — no extra needed for the servers.
+pip install -e .              # core CLI + MCP servers
+pip install -e '.[all]'       # + web UI, crypto, jpeg, pdf, metadata
 ```
 
 After install, these entry points are on `$PATH` inside the venv:
 
 ```
-stegg              # main CLI
-stegg-web          # NiceGUI web UI  (requires the [web] or [all] extra)
-stegg-mcp          # MCP server, HTTP transport   (requires [mcp] or [all])
-stegg-mcp-stdio    # MCP server, stdio transport  (requires [mcp] or [all])
+stegg                # main CLI
+stegg-web            # NiceGUI web UI  (requires the [web] or [all] extra)
+m3gast3gg-mcp        # MCP server, HTTP transport
+m3gast3gg-mcp-stdio  # MCP server, stdio transport
 ```
 
 Smoke test:
 
 ```bash
 stegg --help
+m3gast3gg-mcp --help
 pytest -q -m "not slow"
 ```
 
-### If you add a new top-level module
-
-`pyproject.toml` pins the list of top-level modules under
-`[tool.setuptools] py-modules = [...]`. Adding a new top-level `.py` module
-requires editing that list **and** rerunning `pip install -e .` — editable
-mode does not auto-discover new modules.
-
 ### Optional extras (what each one pulls in)
 
-| Extra       | Adds                                             |
-|-------------|--------------------------------------------------|
-| `web`       | `nicegui`, `fastapi` — needed for `stegg-web`    |
-| `web-legacy`| `streamlit` — legacy Streamlit UI                |
-| `crypto`    | `cryptography` — enables AES-256-GCM Ghost Mode  |
-| `mcp`       | `mcp`, `uvicorn`, `starlette` — MCP server       |
-| `jpeg`      | `jpeglib` — F5 JPEG DCT encode/decode            |
-| `metadata`  | `piexif` — EXIF writing                          |
-| `pdf`       | `pypdf` — PDF authoring                          |
-| `all`       | everything above                                 |
+| Extra       | Adds                                                        |
+|-------------|-------------------------------------------------------------|
+| `web`       | `nicegui`, `fastapi`, `streamlit` — needed for `stegg-web`  |
+| `crypto`    | `cryptography` — enables AES-256-GCM Ghost Mode             |
+| `jpeg`      | `jpeglib` — F5 JPEG DCT encode/decode                       |
+| `metadata`  | `piexif` — EXIF writing                                     |
+| `pdf`       | `pypdf` — PDF authoring                                     |
+| `dev`       | `pytest`, `pytest-asyncio` — test suite                     |
+| `all`       | everything above except `dev`                               |
 
 ---
 
 ## Browser-only (no install)
 
-The client-side UI in `index.html` runs with zero dependencies:
+The client-side UI in `web/index.html` runs with zero dependencies:
 
 ```bash
-open index.html      # macOS
-xdg-open index.html  # Linux
+open web/index.html      # macOS
+xdg-open web/index.html  # Linux
 ```
 
 Everything runs in the browser. No Python required.
@@ -94,7 +85,7 @@ Everything runs in the browser. No Python required.
 ## Uninstall
 
 ```bash
-pip uninstall stegg
+pip uninstall m3gast3gg
 # and delete the venv:
 deactivate && rm -rf venv
 ```

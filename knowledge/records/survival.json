@@ -1,0 +1,745 @@
+[
+  {
+    "id": "sv-lsb-slack-upload",
+    "name": "image-lsb × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["png-lsb-slack"],
+    "citations": ["st3gg-transport-results-slack", "st3gg-transport-matrix"],
+    "see_also": ["image-lsb", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "transport_id": "transport-slack-upload",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: 6 PNG LSB variants (1bit-R-seq, 1bit-RGB-inter, 1bit-RGBA-inter, 2bit-B-spread, 4bit-RGBA-rand, 8bit-RGB-seq) all byte-identical",
+      "tested_at": "2026-07-25",
+      "cells_tested": 6
+    },
+    "notes": "PNG IDAT is byte-identical on Slack CDN re-serve. This is the empirical basis for 'over Slack, use PNG LSB for image hides'."
+  },
+  {
+    "id": "sv-png-textchunk-slack-upload",
+    "name": "image-png-text-chunk × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["png-text-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-png-text-chunk", "transport-slack-upload", "myth-slack-preserves-metadata"],
+    "technical_body": {
+      "technique_id": "image-png-text-chunk",
+      "transport_id": "transport-slack-upload",
+      "status": "❌ stripped",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: chunk_tEXt, chunk_zTXt, chunk_iTXt all STRIPPED; png_pseudo_exif_* (tEXt-hosted EXIF) all STRIPPED",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "Slack's strip list targets named ancillary text chunks and metadata slots."
+  },
+  {
+    "id": "sv-png-private-chunk-slack-upload",
+    "name": "image-png-private-chunk × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["png-private-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-png-private-chunk", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-png-private-chunk",
+      "transport_id": "transport-slack-upload",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: chunk_private SURVIVES",
+      "tested_at": "2026-07-25",
+      "caveat": "Slack could tighten the strip list; treat as working-but-fragile."
+    },
+    "notes": "Non-standard 4-char private chunks pass through Slack's strip list."
+  },
+  {
+    "id": "sv-trailing-bytes-slack-upload",
+    "name": "image-trailing-bytes × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["trailing-bytes-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-trailing-bytes", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-trailing-bytes",
+      "transport_id": "transport-slack-upload",
+      "status": "❌ stripped",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: png_trailing_bytes STRIPPED, jpeg_trailing_bytes RECODED (destroyed by JPEG re-encode)",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "Slack normalizes PNGs to end at IEND; JPEG trailer bytes get destroyed by the re-encode pass."
+  },
+  {
+    "id": "sv-f5-slack-upload",
+    "name": "image-f5 × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["f5-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-f5", "transport-slack-upload", "myth-jpeg-steg-survives-recode"],
+    "technical_body": {
+      "technique_id": "image-f5",
+      "transport_id": "transport-slack-upload",
+      "status": "❌ stripped",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: jpeg_f5 RECODED (payload destroyed)",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "F5's DCT pattern doesn't survive Slack's re-quantization."
+  },
+  {
+    "id": "sv-jsteg-slack-upload",
+    "name": "image-jsteg × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["jsteg-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-jsteg", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-jsteg",
+      "transport_id": "transport-slack-upload",
+      "status": "❌ stripped",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: jpeg_jsteg RECODED",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "Same failure mode as F5: DCT payload destroyed by requantization."
+  },
+  {
+    "id": "sv-dct-slack-upload",
+    "name": "image-dct × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["dct-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-dct", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-dct",
+      "transport_id": "transport-slack-upload",
+      "status": "⚠ tuned only",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: jpeg_dct_medium and jpeg_dct_high SURVIVE",
+      "tested_at": "2026-07-25",
+      "caveat": "The generic DCT cells that survived were sized to match Slack's re-encoder; read as 'possible with careful tuning', not reliable."
+    },
+    "notes": "Medium/high robustness DCT can survive if the destination Q matches. Fragile."
+  },
+  {
+    "id": "sv-matryoshka-slack-upload",
+    "name": "image-matryoshka × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["matryoshka-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-matryoshka", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-matryoshka",
+      "transport_id": "transport-slack-upload",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: matryoshka_nested and specter_channel_cipher SURVIVE",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "Inherits PNG LSB byte-identity at every level."
+  },
+  {
+    "id": "sv-gif-comment-slack-upload",
+    "name": "image-gif-comment × transport-slack-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["gif-slack"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-gif-comment", "transport-slack-upload"],
+    "technical_body": {
+      "technique_id": "image-gif-comment",
+      "transport_id": "transport-slack-upload",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: clean_gif SURVIVES byte-identical (GIF containers preserved end-to-end)",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "GIF byte-identical on Slack, comment extension survives."
+  },
+  {
+    "id": "sv-zero-width-slack-paste",
+    "name": "text-zero-width × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["zw-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-zero-width", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-zero-width",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_zero_width SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-cyrillic-slack-paste",
+    "name": "text-cyrillic-homoglyph × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["cyrillic-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-cyrillic-homoglyph", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-cyrillic-homoglyph",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_cyrillic_homoglyph SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-cjk-slack-paste",
+    "name": "text-cjk-homoglyph × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["cjk-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-cjk-homoglyph", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-cjk-homoglyph",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_cjk_homoglyph SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-whitespace-slack-paste",
+    "name": "text-whitespace × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["whitespace-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-whitespace", "transport-slack-paste", "sv-whitespace-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-whitespace",
+      "transport_id": "transport-slack-paste",
+      "status": "❌ recoded",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_whitespace RECODED (Slack normalizes trailing whitespace)",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "Use slack_snippet instead when this technique must survive."
+  },
+  {
+    "id": "sv-invisible-ink-slack-paste",
+    "name": "text-invisible-ink × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["invisible-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-invisible-ink", "transport-slack-paste", "sv-invisible-ink-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-invisible-ink",
+      "transport_id": "transport-slack-paste",
+      "status": "❌ recoded",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_invisible_ink RECODED (Slack drops tag chars from message body)",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-variation-slack-paste",
+    "name": "text-variation × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["vs-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-variation", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-variation",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_variation_selector SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-combining-slack-paste",
+    "name": "text-combining × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["cgj-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-combining", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-combining",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_combining_cgj SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-confusable-slack-paste",
+    "name": "text-confusable × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["confusable-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-confusable", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-confusable",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_confusable_whitespace SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-directional-slack-paste",
+    "name": "text-directional × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["directional-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-directional", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-directional",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_directional_override SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-hangul-slack-paste",
+    "name": "text-hangul × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["hangul-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-hangul", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-hangul",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_hangul_filler SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-mathbold-slack-paste",
+    "name": "text-mathbold × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["mathbold-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-mathbold", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-mathbold",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_mathbold SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-braille-slack-paste",
+    "name": "text-braille × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["braille-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-braille", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-braille",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_braille SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-emoji-slack-paste",
+    "name": "text-emoji-substitution × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["emoji-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-emoji-substitution", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-emoji-substitution",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_emoji_substitution SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-skintone-slack-paste",
+    "name": "emoji-skintone × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["skintone-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["emoji-skintone", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "emoji-skintone",
+      "transport_id": "transport-slack-paste",
+      "status": "⚠ colon-form-lossy",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_skintone SURVIVES in blocks[]; the flat .text field colon-forms it and drops the modifier bits",
+      "tested_at": "2026-07-25",
+      "caveat": "Consumer must walk conversations.history blocks[].rich_text_section.elements[] rather than .text"
+    }
+  },
+  {
+    "id": "sv-emoji-tag-slack-paste",
+    "name": "emoji-tag-sequence × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["emoji-tag-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["emoji-tag-sequence", "transport-slack-paste", "sv-emoji-tag-slack-snippet"],
+    "technical_body": {
+      "technique_id": "emoji-tag-sequence",
+      "transport_id": "transport-slack-paste",
+      "status": "❌ stripped",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: tag chars canonicalized away when Slack emits :colon_form: on the wire",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-capitalization-slack-paste",
+    "name": "text-capitalization × transport-slack-paste",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["capitalization-slack-paste"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-capitalization", "transport-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-capitalization",
+      "transport_id": "transport-slack-paste",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: text_capitalization SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-zero-width-slack-snippet",
+    "name": "text-zero-width × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["zw-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-zero-width", "transport-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-zero-width",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_zero_width SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-whitespace-slack-snippet",
+    "name": "text-whitespace × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "semantic",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["whitespace-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-whitespace", "transport-slack-snippet", "sv-whitespace-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-whitespace",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_whitespace SURVIVES (paste recodes it)",
+      "tested_at": "2026-07-25"
+    },
+    "notes": "The paste-vs-snippet contrast: raw bytes preserve whitespace, rendered post normalizes it."
+  },
+  {
+    "id": "sv-invisible-ink-slack-snippet",
+    "name": "text-invisible-ink × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["invisible-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-invisible-ink", "transport-slack-snippet", "sv-invisible-ink-slack-paste"],
+    "technical_body": {
+      "technique_id": "text-invisible-ink",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_invisible_ink SURVIVES (paste recodes it)",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-cyrillic-slack-snippet",
+    "name": "text-cyrillic-homoglyph × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["cyrillic-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-cyrillic-homoglyph", "transport-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-cyrillic-homoglyph",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_cyrillic_homoglyph SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-directional-slack-snippet",
+    "name": "text-directional × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["directional-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-directional", "transport-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-directional",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_directional SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-emoji-slack-snippet",
+    "name": "text-emoji-substitution × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "primary",
+    "aliases": ["emoji-slack-snippet"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["text-emoji-substitution", "transport-slack-snippet"],
+    "technical_body": {
+      "technique_id": "text-emoji-substitution",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_RESULTS_SLACK.json: snippet_emoji SURVIVES",
+      "tested_at": "2026-07-25"
+    }
+  },
+  {
+    "id": "sv-emoji-tag-slack-snippet",
+    "name": "emoji-tag-sequence × transport-slack-snippet",
+    "category": "survival",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", "2026-07-26"],
+    "confidence": "community",
+    "aliases": ["emoji-tag-slack-snippet"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["emoji-tag-sequence", "transport-slack-snippet", "sv-emoji-tag-slack-paste"],
+    "technical_body": {
+      "technique_id": "emoji-tag-sequence",
+      "transport_id": "transport-slack-snippet",
+      "status": "✅ likely",
+      "evidence": "TRANSPORT_MATRIX.md rates 'likely survives' via snippet route (raw bytes bypass render pipeline); no direct probe cell yet",
+      "tested_at": "2026-07-25",
+      "caveat": "Predicted from the snippet-preserves-all-text-family pattern; no direct cell yet."
+    }
+  },
+  {
+    "id": "sv-lsb-http-raw",
+    "name": "image-lsb × transport-http-raw",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "primary",
+    "aliases": ["lsb-http"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["image-lsb", "transport-http-raw"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "transport_id": "transport-http-raw",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_MATRIX.md: HTTP raw preserves bytes for every carrier",
+      "tested_at": null
+    },
+    "notes": "The baseline. Byte-identical."
+  },
+  {
+    "id": "sv-lsb-github-upload",
+    "name": "image-lsb × transport-github-upload",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "primary",
+    "aliases": ["lsb-github"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["image-lsb", "transport-github-upload"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "transport_id": "transport-github-upload",
+      "status": "✅ likely",
+      "evidence": "TRANSPORT_MATRIX.md: GitHub upload rated 'likely survives' — bytes served identical via raw.githubusercontent.com",
+      "tested_at": null
+    }
+  },
+  {
+    "id": "sv-lsb-email-attachment",
+    "name": "image-lsb × transport-email-attachment",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "primary",
+    "aliases": ["lsb-email"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["image-lsb", "transport-email-attachment"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "transport_id": "transport-email-attachment",
+      "status": "✅ likely",
+      "evidence": "TRANSPORT_MATRIX.md: SMTP attachment (base64 MIME) preserves bytes",
+      "tested_at": null
+    }
+  },
+  {
+    "id": "sv-text-http-raw",
+    "name": "text (family) × transport-http-raw",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "primary",
+    "aliases": ["text-http"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["text-zero-width", "text-cyrillic-homoglyph", "transport-http-raw"],
+    "technical_body": {
+      "technique_id": "text-zero-width",
+      "transport_id": "transport-http-raw",
+      "status": "✅ survives",
+      "evidence": "TRANSPORT_MATRIX.md: text family all preserved on HTTP raw",
+      "tested_at": null,
+      "applies_to": ["text-zero-width", "text-cyrillic-homoglyph", "text-cjk-homoglyph", "text-whitespace", "text-invisible-ink", "text-variation", "text-combining", "text-confusable", "text-directional", "text-hangul", "text-mathbold", "text-braille", "text-emoji-substitution", "emoji-skintone", "text-capitalization", "emoji-tag-sequence"]
+    },
+    "notes": "Umbrella row: every text technique survives HTTP raw. See applies_to for the covered technique ids."
+  },
+  {
+    "id": "sv-zero-width-terminal-stdout",
+    "name": "text-zero-width × transport-terminal-stdout",
+    "category": "survival",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "community",
+    "aliases": ["zw-terminal"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["text-zero-width", "transport-terminal-stdout", "transport-pbcopy"],
+    "technical_body": {
+      "technique_id": "text-zero-width",
+      "transport_id": "transport-terminal-stdout",
+      "status": "⚠ terminal-dependent",
+      "evidence": "st3gg-field-guide: terminals may filter zero-width from mouse-copy path",
+      "tested_at": null,
+      "workaround": "pipe through pbcopy / xclip / clip.exe"
+    }
+  },
+  {
+    "id": "sv-lsb-whatsapp-photo",
+    "name": "image-lsb × transport-whatsapp-photo",
+    "category": "survival",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2026-08-06", null],
+    "confidence": "community",
+    "aliases": ["lsb-whatsapp-photo"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["image-lsb", "transport-whatsapp-photo", "transport-whatsapp-document"],
+    "technical_body": {
+      "technique_id": "image-lsb",
+      "transport_id": "transport-whatsapp-photo",
+      "status": "❌ stripped",
+      "evidence": "WhatsApp photo mode re-encodes JPEGs and destroys pixel-level payload",
+      "tested_at": null,
+      "workaround": "send as document (transport-whatsapp-document)"
+    }
+  }
+]

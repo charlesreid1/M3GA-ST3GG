@@ -20,7 +20,7 @@ from PIL import Image
 
 pytest.importorskip("jpeglib")
 
-from f5_core import CapacityExceeded, F5Stegg
+from m3gast3gg.core.f5 import CapacityExceeded, F5Stegg
 
 
 FIX_DIR = Path(__file__).parent / "fixtures" / "f5" / "jpeg"
@@ -67,7 +67,7 @@ def test_wrong_key_does_not_recover_payload(clean_jpeg_bytes):
     s2 = F5Stegg(b"wrong-key!!")
     stego = s1.embed(clean_jpeg_bytes, b"secret")
 
-    from f5_core import ExtractionFailed
+    from m3gast3gg.core.f5 import ExtractionFailed
 
     try:
         got = s2.extract(stego)
@@ -88,7 +88,7 @@ def test_analyze_returns_capacity_list(clean_jpeg_bytes):
 
 def test_capacity_exceeded_raises(clean_jpeg_bytes):
     s = F5Stegg(b"key")
-    # Try to embed way more than clean.jpg can hold.
+    # Try to embed way more than the generated JPEG can hold.
     huge = b"x" * 100_000
     with pytest.raises(CapacityExceeded):
         s.embed(clean_jpeg_bytes, huge)

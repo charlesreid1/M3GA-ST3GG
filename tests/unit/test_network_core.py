@@ -12,7 +12,7 @@ import zlib
 
 import pytest
 
-from network_core import (
+from m3gast3gg.core.network import (
     METHOD_BYTES_PER_PACKET,
     METHOD_WIRE_FORMATS,
     NETH_HEADER_SIZE,
@@ -300,7 +300,7 @@ def test_encode_is_deterministic():
     differ between runs. We compare the reconstructed packet bytes
     instead — that isolates the MAC-RNG-seeded content of interest.
     """
-    import network_core
+    import m3gast3gg.core.network as network_core
     import random
     from scapy.all import rdpcap
     import io as _io, os as _os, tempfile as _tempfile

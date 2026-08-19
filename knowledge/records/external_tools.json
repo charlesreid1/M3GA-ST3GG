@@ -1,0 +1,212 @@
+[
+  {
+    "id": "tool-steghide",
+    "name": "steghide",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2003-10-15", null],
+    "confidence": "primary",
+    "aliases": ["steghide"],
+    "citations": ["kessler-primer", "st3gg-field-guide"],
+    "see_also": ["image-f5", "image-jsteg"],
+    "technical_body": {
+      "binary_name": "steghide",
+      "install_hint": "brew install steghide  # or: apt install steghide",
+      "capabilities": ["JPEG (embed/extract)", "BMP (embed/extract)", "WAV (embed/extract)", "AU (embed/extract)"],
+      "algorithm": "graph-matching-based JPEG scheme with AES-256 payload encryption",
+      "format_compat": "steghide-only; not interoperable with F5, jsteg, OutGuess, or ST3GG",
+      "interop_notes": "Reads only its own container format. See myth-steghide-reads-outguess for the common CTF trap."
+    },
+    "notes": "Historical reference tool for JPEG steg. Distinctive header + AES-256 password gate. Present via `bin:steghide` capability check."
+  },
+  {
+    "id": "tool-jsteg",
+    "name": "jsteg (reference implementation)",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "community",
+    "aliases": ["jsteg"],
+    "citations": ["st3gg-field-guide", "westfeld-pfitzmann-1999-chi2"],
+    "see_also": ["image-jsteg"],
+    "technical_body": {
+      "binary_name": "jsteg",
+      "install_hint": "cargo install jsteg  # or build from Derek Upham's original C source",
+      "capabilities": ["JPEG LSB-of-nonzero-AC embed/extract"],
+      "algorithm": "LSB replacement on nonzero AC DCT coefficients, 16-bit length prefix",
+      "format_compat": "jsteg-only",
+      "interop_notes": "ST3GG's img_core.jsteg_encode is round-trip-compatible with the reference implementation on the wire format."
+    },
+    "notes": "The technique the chi-square attack was invented against. Almost never used for real hides today; a puzzle-genre staple."
+  },
+  {
+    "id": "tool-outguess",
+    "name": "OutGuess",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-08-13", null],
+    "confidence": "primary",
+    "aliases": ["outguess"],
+    "citations": ["provos-2001-outguess", "kessler-primer"],
+    "see_also": ["image-f5", "image-jsteg"],
+    "technical_body": {
+      "binary_name": "outguess",
+      "install_hint": "brew install outguess  # or: apt install outguess",
+      "capabilities": ["JPEG (histogram-preserving embed/extract)"],
+      "algorithm": "statistical-preserving JPEG: reserve half the coefficients as correction and embed in the other half so the DCT histogram is preserved",
+      "format_compat": "outguess-only",
+      "interop_notes": "Not readable by steghide, F5, or jsteg. Historical significance: first JPEG scheme that survived chi-square."
+    },
+    "notes": "Preserves DCT histograms; defeats naive chi-square. Present via `bin:outguess` capability check."
+  },
+  {
+    "id": "tool-zsteg",
+    "name": "zsteg",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2014-01-01", null],
+    "confidence": "primary",
+    "aliases": ["zsteg"],
+    "citations": ["zsteg", "st3gg-field-guide"],
+    "see_also": ["image-lsb", "det-bit-plane-entropy"],
+    "technical_body": {
+      "binary_name": "zsteg",
+      "install_hint": "gem install zsteg",
+      "capabilities": ["PNG LSB detection across channels/planes", "BMP LSB detection", "trailing data extraction", "OLE/steghide/DCT hints"],
+      "algorithm": "brute-force channel × bit-plane × direction × alignment combinations, looking for printable ASCII / high-entropy runs",
+      "format_compat": "detection tool, not an encoder",
+      "interop_notes": "CTF staple for PNG/BMP LSB. Reads ST3GG-encoded PNGs at the bit level but doesn't understand the ST3GG v3 header, so the raw bit dump may or may not be human-readable depending on encryption."
+    },
+    "notes": "First tool to reach for on unknown PNG/BMP LSB. Runs fast, produces false positives on smooth carriers."
+  },
+  {
+    "id": "tool-stegdetect",
+    "name": "StegDetect",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "primary",
+    "aliases": ["stegdetect"],
+    "citations": ["stegdetect", "provos-2001-outguess"],
+    "see_also": ["image-f5", "image-jsteg", "det-f5-signature"],
+    "technical_body": {
+      "binary_name": "stegdetect",
+      "install_hint": "https://github.com/abeluck/stegdetect  # unmaintained",
+      "capabilities": ["JPEG signature scan for jsteg, jphide, invisible-secrets, outguess, F5, appendX, camouflage"],
+      "algorithm": "statistical + signature detectors, one per targeted tool",
+      "format_compat": "detection only; JPEG-focused",
+      "interop_notes": "Long unmaintained. False-fires on modern JPEGs; results should corroborate structural evidence, not stand alone."
+    },
+    "notes": "The classic JPEG steg-detection tool. Historical significance; keep in the toolkit for the F5 signature scan even though the tool is aging."
+  },
+  {
+    "id": "tool-binwalk",
+    "name": "binwalk",
+    "category": "external_tool",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2010-01-01", null],
+    "confidence": "primary",
+    "aliases": ["binwalk"],
+    "citations": ["kessler-primer", "st3gg-field-guide"],
+    "see_also": ["image-trailing-bytes", "image-polyglot"],
+    "technical_body": {
+      "binary_name": "binwalk",
+      "install_hint": "brew install binwalk  # or: apt install binwalk",
+      "capabilities": ["magic-byte scanning across arbitrary binary files", "embedded file extraction (--dd, -e)", "entropy analysis"],
+      "algorithm": "magic-byte scan with signature library; --extract carves recognized formats",
+      "format_compat": "detection + extraction; carrier-agnostic",
+      "interop_notes": "Overlaps with ST3GG's stegg_carve (which is more targeted at known steg carriers)."
+    },
+    "notes": "First tool to run on an unknown binary suspected of embedded content. Fires on trailing data past IEND/EOI, on ZIP-in-PNG polyglots, on any recognized magic sequence."
+  },
+  {
+    "id": "tool-foremost",
+    "name": "foremost",
+    "category": "external_tool",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "community",
+    "aliases": ["foremost"],
+    "citations": ["kessler-primer"],
+    "see_also": ["image-trailing-bytes"],
+    "technical_body": {
+      "binary_name": "foremost",
+      "install_hint": "brew install foremost  # or: apt install foremost",
+      "capabilities": ["file-carving from unstructured byte streams (disk images, memory dumps, arbitrary blobs)"],
+      "algorithm": "header/footer signature carving via /etc/foremost.conf",
+      "format_compat": "extraction only",
+      "interop_notes": "Complementary to binwalk. binwalk is scan-first; foremost is carve-first. For steg CTF work, binwalk usually suffices."
+    },
+    "notes": "Forensics-lineage tool; born in the DFRWS carving-challenge era. Handles disk-image scale better than binwalk."
+  },
+  {
+    "id": "tool-stegexpose",
+    "name": "StegExpose",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2014-01-01", null],
+    "confidence": "community",
+    "aliases": ["stegexpose"],
+    "citations": ["kessler-primer"],
+    "see_also": ["det-rs", "det-spa", "det-chi-square"],
+    "technical_body": {
+      "binary_name": "stegexpose.jar",
+      "install_hint": "download from https://github.com/b3dk7/StegExpose (Java 8+)",
+      "capabilities": ["batch RS / SPA / primary-set-fusion / chi-square analysis over LSB steg in PNG/BMP"],
+      "algorithm": "ensemble of statistical LSB detectors with configurable threshold",
+      "format_compat": "detection only",
+      "interop_notes": "Batch-oriented; useful when triaging a directory. ST3GG's stegg_triage exposes the same probes on single files."
+    },
+    "notes": "Free Java batch scanner. Common in academic reproducibility work (paired with StegoAppDB and Alaska2)."
+  },
+  {
+    "id": "tool-aletheia",
+    "name": "Aletheia",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2019-01-01", null],
+    "confidence": "community",
+    "aliases": ["aletheia"],
+    "citations": ["alaska2-competition"],
+    "see_also": ["image-f5", "image-jsteg", "det-f5-signature"],
+    "technical_body": {
+      "binary_name": "aletheia",
+      "install_hint": "pip install aletheia-py  # + trained detector weights",
+      "capabilities": ["ML-based detection of JUNIWARD, UED, nsF5, HUGO, S-UNIWARD in JPEGs; F5 / jsteg / OutGuess classical detection"],
+      "algorithm": "ensemble: SRM / DCTR / GFR feature families + a Random Forest / SRNet classifier",
+      "format_compat": "detection only",
+      "interop_notes": "State-of-the-art for adaptive JPEG steg detection as of ~2024. Reference tool from the Alaska2 competition era."
+    },
+    "notes": "Modern-era research-grade JPEG steg detector. Requires trained weights and is significantly heavier than zsteg/StegExpose."
+  },
+  {
+    "id": "tool-exiftool",
+    "name": "ExifTool",
+    "category": "external_tool",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2003-01-01", null],
+    "confidence": "primary",
+    "aliases": ["exiftool"],
+    "citations": ["kessler-primer", "st3gg-field-guide"],
+    "see_also": ["image-png-text-chunk"],
+    "technical_body": {
+      "binary_name": "exiftool",
+      "install_hint": "brew install exiftool  # or: apt install libimage-exiftool-perl",
+      "capabilities": ["read / write EXIF / XMP / IPTC / ICC across ~140 file formats", "PNG chunk enumeration", "MakerNotes decoding"],
+      "algorithm": "format-specific parsers with 25k+ known tag definitions",
+      "format_compat": "reader/writer; not steg-specific",
+      "interop_notes": "First tool to run for metadata-channel steg. ST3GG's stegg_read_metadata uses Pillow + optional exiftool; the exiftool binary reads more tags."
+    },
+    "notes": "Not a steg tool per se, but every metadata-channel hide is exposed by exiftool. Present via `bin:exiftool` capability check."
+  }
+]

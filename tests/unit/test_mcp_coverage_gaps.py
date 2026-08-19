@@ -18,10 +18,10 @@ import numpy as np
 import pytest
 from PIL import Image
 
-import img_core
+import m3gast3gg.core.img as img_core
 
-from st3ggmcp.tools import TOOL_EXECUTORS, TOOL_SCHEMAS
-from st3ggmcp.tools.image import (
+from m3gast3gg.mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
+from m3gast3gg.mcp.image import (
     execute_analyze_image,
     execute_detect_pvd,
     execute_inject_exif,

@@ -1,5 +1,5 @@
 {
-  "source_jpeg": "clean.jpg",
+  "source_jpeg": "generated in-memory (see clean_jpeg_bytes fixture in test_f5_stegg.py)",
   "cases": [
     {
       "label": "short_ascii",

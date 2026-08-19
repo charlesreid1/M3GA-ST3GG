@@ -14,9 +14,9 @@ import io
 import pytest
 from PIL import Image
 
-from img_core import extract_text_chunks, inject_text_chunk
-from img_core import create_config, decode, encode
-from jailbreak_core import compose_image_jailbreak, detect_full_injection_package
+from m3gast3gg.core.img import extract_text_chunks, inject_text_chunk
+from m3gast3gg.core.img import create_config, decode, encode
+from m3gast3gg.core.jailbreak import compose_image_jailbreak, detect_full_injection_package
 
 pytestmark = pytest.mark.pipeline
 
@@ -78,7 +78,7 @@ def test_full_jailbreak_stack(medium_carrier, pipelines_dir):
 
     # Recover LSB layer
     img = Image.open(io.BytesIO(payload.image_bytes))
-    from img_core import decode as _decode
+    from m3gast3gg.core.img import decode as _decode
     assert _decode(img, create_config(channels="RGB", bits=1)) == payload.text_content.encode("utf-8")
 
     # Recover text chunks (metadata layer)

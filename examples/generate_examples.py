@@ -2077,7 +2077,7 @@ def generate_midi_hidden():
 def generate_pcap_hidden():
     """Create a PCAP file with the Plinian divider hidden in packet payloads."""
     print("  Generating PCAP with hidden packet data...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.IP_TTL,
@@ -3350,7 +3350,7 @@ def generate_emoji_substitution():
 def generate_dns_tunnel_pcap():
     """Create a PCAP with Plinian divider hidden in DNS query names."""
     print("  Generating DNS tunneling PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.DNS_LABEL,
@@ -3372,7 +3372,7 @@ def generate_dns_tunnel_pcap():
 def generate_icmp_steg_pcap():
     """Create a PCAP with Plinian divider hidden in ICMP echo request payloads."""
     print("  Generating ICMP steganography PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.ICMP_PAYLOAD,
@@ -3393,7 +3393,7 @@ def generate_icmp_steg_pcap():
 def generate_tcp_covert_pcap():
     """Create a PCAP with Plinian divider hidden in TCP ISN fields."""
     print("  Generating TCP covert channel PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.TCP_ISN,
@@ -3418,7 +3418,7 @@ def generate_tcp_covert_pcap():
 def generate_http_header_pcap():
     """Create a PCAP with Plinian divider hidden in HTTP custom headers."""
     print("  Generating HTTP header smuggling PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.HTTP_HEADER,
@@ -4252,7 +4252,7 @@ def generate_misspelling():
 def generate_ip_ttl_covert():
     """Create a PCAP with the Plinian divider hidden in IP TTL values."""
     print("  Generating IP TTL covert channel PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.IP_TTL,
@@ -4273,7 +4273,7 @@ def generate_ip_ttl_covert():
 def generate_ip_id_covert():
     """Create a PCAP with the Plinian divider hidden in IP Identification fields."""
     print("  Generating IP ID covert channel PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.IP_ID,
@@ -4298,7 +4298,7 @@ def generate_ip_id_covert():
 def generate_tcp_window_covert():
     """Create a PCAP with the Plinian divider hidden in TCP window size fields."""
     print("  Generating TCP window size covert PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.TCP_WINDOW,
@@ -4323,7 +4323,7 @@ def generate_tcp_window_covert():
 def generate_tcp_urgent_covert():
     """Create a PCAP with the Plinian divider in TCP urgent pointer fields."""
     print("  Generating TCP urgent pointer covert PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.TCP_URGENT,
@@ -4348,7 +4348,7 @@ def generate_tcp_urgent_covert():
 def generate_dns_txt_record():
     """Create a PCAP with the Plinian divider in a DNS TXT record response."""
     print("  Generating DNS TXT record PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.DNS_TXT,
@@ -4374,7 +4374,7 @@ def generate_dns_txt_record():
 def generate_covert_timing():
     """Create a PCAP with the Plinian divider in inter-packet timing (microseconds)."""
     print("  Generating covert timing channel PCAP...")
-    from network_core import NetworkStegConfig, StegoMethod, WireFormat, encode
+    from m3gast3gg.core.network import NetworkStegConfig, StegoMethod, WireFormat, encode
 
     config = NetworkStegConfig(
         method=StegoMethod.COVERT_TIMING,

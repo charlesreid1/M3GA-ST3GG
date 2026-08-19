@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import crypto
+import m3gast3gg.core.crypto as crypto
 
 # The XOR path is always available; AES paths need the cryptography package.
 AES_METHODS = ["aes-cbc", "aes-gcm"]

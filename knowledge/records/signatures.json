@@ -1,0 +1,170 @@
+[
+  {
+    "id": "sig-decreasing-rgb",
+    "name": "SPA/RS decreasing across R > G > B",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["seq-rgb-signature"],
+    "citations": ["st3gg-field-guide", "fridrich-2001-rs"],
+    "see_also": ["image-lsb", "det-rs", "det-spa"],
+    "technical_body": {
+      "pattern": "SPA / RS estimated embedding rates decrease across channels in R > G > B order (e.g. R=52%, G=40%, B=26%)",
+      "probable_technique": "image-lsb (sequential, RGB, 1 bpc, starting at top of image)",
+      "next_action": "raw-bit dump of R interleaved 1bpc sequential; eyeball head as ASCII",
+      "strength": "strong",
+      "python_snippet": "from PIL import Image\nraw = Image.open('in.png').convert('RGB').tobytes()\nbits = [(raw[i] >> 0) & 1 for i in range(0, len(raw), 3)]\nby = bytes(int(''.join(map(str, bits[i:i+8])), 2) for i in range(0, len(bits) - 7, 8))\nprint(by[:256])"
+    },
+    "notes": "Classic sequential-embedding fingerprint. Payload consumed most of R, spilled into G, tapered off in B."
+  },
+  {
+    "id": "sig-equal-rgb",
+    "name": "SPA/RS equal across R ≈ G ≈ B",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["interleaved-signature"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb"],
+    "technical_body": {
+      "pattern": "SPA / RS embedding rates roughly equal across all three channels",
+      "probable_technique": "image-lsb (interleaved or spread traversal); ~12-15% suggests 1bpc, ~25-35% suggests 2bpc or higher-nibble",
+      "next_action": "raw-bit dump of R,G,B interleaved 1bpc; if that's noise, try 2bpc",
+      "strength": "moderate"
+    }
+  },
+  {
+    "id": "sig-multiple-bit-planes",
+    "name": "Two adjacent bit-planes flagged on same channel",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["multi-bpc-signature"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "det-bit-plane-entropy"],
+    "technical_body": {
+      "pattern": "bit_0 AND bit_1 both suspicious on the same channel (or bit_0..bit_3 all suspicious)",
+      "probable_technique": "image-lsb with 2 bpc (or 4 bpc / high-nibble)",
+      "next_action": "raw-bit dump at 2 bpc (or nibble-dump for 4 bpc)",
+      "strength": "strong"
+    }
+  },
+  {
+    "id": "sig-low-plane-entropy-ascii",
+    "name": "Low entropy on a suspicious LSB plane",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["low-entropy-ascii"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "det-bit-plane-entropy"],
+    "technical_body": {
+      "pattern": "bit-plane entropy on the suspicious plane is ~2-4 bits/byte",
+      "probable_technique": "raw structured content, almost certainly uncompressed ASCII text",
+      "next_action": "dump raw bits, decode as ASCII, print head",
+      "strength": "moderate",
+      "threshold_provenance": "heuristic — the 2-4 bits/byte range matches English prose entropy (Shannon 1951 estimated ~1-1.5 bits/char lower bound, ~4 bits/char upper for character n-grams). ST3GG has not measured this threshold against a controlled clean-cover corpus; a plane exactly at 2.5 bits/byte on an uncompressed-ASCII payload is expected but exact bounds shift with cover statistics. Cross-reference: known-unknowns.md 'Bit-plane entropy thresholds'."
+    },
+    "notes": "English text is not high-entropy; this is the giveaway that whoever hid it didn't compress or encrypt. Ranges are heuristic — compare against a same-cover clean baseline when possible."
+  },
+  {
+    "id": "sig-high-plane-entropy-encrypted",
+    "name": "High entropy on a suspicious LSB plane",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["high-entropy-encrypted"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "det-bit-plane-entropy"],
+    "technical_body": {
+      "pattern": "bit-plane entropy on the suspicious plane is ~7.9-8.0 bits/byte (near-uniform)",
+      "probable_technique": "compressed or encrypted payload — ciphertext and gzip both look like uniform noise",
+      "next_action": "cannot recover without key or format; report technique + entropy, do not fabricate a plaintext",
+      "strength": "moderate",
+      "threshold_provenance": "heuristic — the ~7.9-8.0 range matches the near-uniform distribution of AES-GCM ciphertext or well-compressed data. ST3GG has not measured this against a controlled clean-cover corpus; a clean natural cover's LSB plane can climb to ~7.5-7.8 depending on sensor noise. A single-plane hit near 7.9 is a signal, not a proof. Cross-reference: known-unknowns.md 'Bit-plane entropy thresholds'."
+    }
+  },
+  {
+    "id": "sig-alpha-all-ones",
+    "name": "Alpha channel LSB all ones",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2010-01-01", null],
+    "confidence": "primary",
+    "aliases": ["alpha-fingerprint"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "myth-lsb-alpha-payload"],
+    "technical_body": {
+      "pattern": "every alpha byte's low bit is 1",
+      "probable_technique": "NOT a payload — either fully-opaque source image or a hider fingerprint",
+      "next_action": "note the fingerprint, move to RGB",
+      "strength": "strong"
+    }
+  },
+  {
+    "id": "sig-spa-rs-mismatch",
+    "name": "SPA and RS disagree strongly",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2003-01-01", null],
+    "confidence": "primary",
+    "aliases": ["spa-rs-disagreement"],
+    "citations": ["st3gg-field-guide", "dumitrescu-2003-spa", "fridrich-2001-rs"],
+    "see_also": ["image-lsb", "det-rs", "det-spa"],
+    "technical_body": {
+      "pattern": "SPA screaming but RS quiet, or vice versa",
+      "probable_technique": "not naive LSB replacement — LSB matching, higher-bit-offset embed, or randomized traversal",
+      "next_action": "try LSB matching decoder; try spread/randomized traversals",
+      "strength": "moderate"
+    }
+  },
+  {
+    "id": "sig-f5-hit-on-png",
+    "name": "F5 signature match on a PNG",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "primary",
+    "aliases": ["f5-png-false-positive"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-f5", "det-f5-signature"],
+    "technical_body": {
+      "pattern": "F5 detector matches on a PNG",
+      "probable_technique": "almost always a false positive — F5 is a JPEG DCT tool",
+      "next_action": "note as noise, do not chase unless corroborated by another signal",
+      "strength": "weak"
+    }
+  },
+  {
+    "id": "sig-direct-pixel-overwrite",
+    "name": "SPA/RS screaming + low entropy + visible discoloration",
+    "category": "signature",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2020-01-01", null],
+    "confidence": "primary",
+    "aliases": ["direct-pixel-overwrite"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb"],
+    "technical_body": {
+      "pattern": "very high SPA/RS AND low bit-plane entropy AND visible banding / discoloration",
+      "probable_technique": "raw uncompressed payload directly overwriting pixel values (not LSB — the payload IS the pixel bytes)",
+      "next_action": "dump pixels directly (Image.tobytes()), decode head as ASCII",
+      "strength": "strong",
+      "python_snippet": "from PIL import Image\nraw = Image.open('in.png').convert('RGB').tobytes()\nprint(raw[:256])"
+    }
+  }
+]

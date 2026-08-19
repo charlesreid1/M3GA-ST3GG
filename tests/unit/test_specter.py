@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from specter import (
+from m3gast3gg.core.specter import (
     CHANNEL_MAP,
     SPECTER_DCT_MAGIC,
     SPECTER_MAGIC_GHOST,

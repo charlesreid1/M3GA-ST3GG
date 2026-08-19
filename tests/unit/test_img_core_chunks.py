@@ -12,7 +12,7 @@ import io
 import pytest
 from PIL import Image
 
-from img_core import (
+from m3gast3gg.core.img import (
     extract_text_chunks,
     inject_itxt_chunk,
     inject_metadata_pil,

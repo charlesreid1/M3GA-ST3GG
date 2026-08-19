@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from transforms_core import (
+from m3gast3gg.core.transforms import (
     _TRANSFORMS,
     fullwidth_text,
     get_transform,

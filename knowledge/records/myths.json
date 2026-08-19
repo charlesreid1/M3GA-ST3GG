@@ -1,0 +1,383 @@
+[
+  {
+    "id": "myth-lsb-survives-jpeg",
+    "name": "\"LSB survives JPEG recompression\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["lsb-jpeg-myth"],
+    "citations": ["itu-t81-jpeg", "westfeld-2001-f5"],
+    "see_also": ["image-lsb", "image-f5", "image-dct"],
+    "technical_body": {
+      "claim": "LSB steg survives JPEG re-encoding (even at Q=99)",
+      "match_patterns": ["\\blsb\\b", "\\bjpeg\\b", "(surviv|robust|through|safely|safe\\s|round.?trip|works?)"],
+      "verdict": "false",
+      "correct_form": "LSB in pixel space dies to any lossy re-encode, including JPEG at Q99. JPEG quantizes DCT coefficients; the inverse-DCT rounding trip alone destroys pixel LSBs. Use coefficient-domain steg (F5, jsteg, or the ST3GG dct_encode robust variants) if the payload must survive JPEG. Even those only survive the *first* re-encode reliably.",
+      "common_source": "confusion between pixel-domain LSB and JPEG DCT-domain LSB"
+    },
+    "notes": "The single most common wrong claim about image stego."
+  },
+  {
+    "id": "myth-homoglyph-nfkc",
+    "name": "\"Cyrillic / CJK homoglyphs survive Unicode normalization\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2005-01-01", null],
+    "confidence": "primary",
+    "aliases": ["homoglyph-nfkc-myth"],
+    "citations": ["unicode-tr36-security", "unicode-nfkc"],
+    "see_also": ["text-cyrillic-homoglyph", "text-cjk-homoglyph"],
+    "technical_body": {
+      "claim": "Homoglyph text steg (cyrillic_homoglyph / cjk_homoglyph) survives Unicode normalization",
+      "match_patterns": ["homoglyph", "(nfkc|normali[zs])", "(surviv|robust|safe|through|resistant)"],
+      "verdict": "false",
+      "correct_form": "Homoglyphs die to NFKC. Cyrillic а (U+0430) normalizes to Latin a (U+0061); fullwidth ， (U+FF0C) normalizes to ASCII ,. Any pipeline that runs NFKC on input (search boxes, some DB columns, aggressive input sanitizers) destroys the payload. Homoglyphs survive NFC but not NFKC. They still survive plain UTF-8 pipelines, chat clients, and code — most real deliveries are NFC-only.",
+      "common_source": "conflating NFC (safe) and NFKC (unsafe) normalization"
+    }
+  },
+  {
+    "id": "myth-slack-preserves-metadata",
+    "name": "\"Slack preserves image metadata\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", null],
+    "confidence": "primary",
+    "aliases": ["slack-metadata-myth"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["image-png-text-chunk", "image-png-private-chunk", "transport-slack-upload"],
+    "technical_body": {
+      "claim": "Slack preserves PNG tEXt/iTXt/zTXt chunks and JPEG EXIF/XMP/IPTC on file upload",
+      "match_patterns": ["slack", "(metadata|exif|xmp|iptc|tetxt|itxt|ztxt|t[ei]xt|chunk)", "(preserv|surviv|keep|retain)"],
+      "verdict": "false",
+      "correct_form": "Slack STRIPS named PNG text chunks (tEXt, iTXt, zTXt) and STRIPS JPEG EXIF/XMP/IPTC on upload. Slack DOES preserve 4-char PNG private chunks (like `stEg`) and does preserve pixel bytes (PNG IDAT byte-identical). If you need metadata to survive Slack upload, use a private chunk; if you need EXIF-flavored data, embed it in a PNG private chunk instead.",
+      "common_source": "generalizing from 'private chunks survive' to 'metadata survives'"
+    }
+  },
+  {
+    "id": "myth-zero-width-invisible-everywhere",
+    "name": "\"Zero-width characters are invisible on every UI\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2000-01-01", null],
+    "confidence": "primary",
+    "aliases": ["zw-universal-myth"],
+    "citations": ["rfc-3629-utf8", "st3gg-field-guide"],
+    "see_also": ["text-zero-width", "transport-terminal-stdout"],
+    "technical_body": {
+      "claim": "Zero-width Unicode chars are invisible everywhere",
+      "match_patterns": ["zero.?width", "invisible", "(every|all|any)where"],
+      "verdict": "needs_qualification",
+      "correct_form": "Zero-width chars (ZWSP U+200B, ZWNJ U+200C, ZWJ U+200D, BOM U+FEFF) render as nothing in most rich-text UIs and are preserved by most copy/paste. They may be filtered by (a) terminal windows on mouse-copy, (b) aggressive input sanitizers, (c) some search boxes that NFKC input. Use pbcopy / xclip / clip.exe if you need them to round-trip through a terminal.",
+      "common_source": "extrapolating from 'invisible in my browser' to 'invisible everywhere'"
+    }
+  },
+  {
+    "id": "myth-steghide-reads-outguess",
+    "name": "\"steghide reads OutGuess format\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "primary",
+    "aliases": ["steghide-outguess-myth"],
+    "citations": ["provos-2001-outguess"],
+    "see_also": ["image-f5", "image-jsteg"],
+    "technical_body": {
+      "claim": "steghide can read files produced by OutGuess (or F5, or jsteg)",
+      "match_patterns": ["steghide", "(outguess|f5|jsteg)"],
+      "verdict": "false",
+      "correct_form": "steghide, OutGuess, F5, and jsteg are separate tools with incompatible formats. steghide uses a graph-matching-based JPEG scheme with its own header + AES256; OutGuess preserves DCT histograms with a different embedding strategy; F5 uses matrix encoding + shrinkage handling; jsteg does LSB replacement on nonzero DCT coefficients. A file made by one is not readable by another.",
+      "common_source": "the common 'run every JPEG stego tool' CTF approach; each tool needs its own decoder"
+    }
+  },
+  {
+    "id": "myth-lsb-alpha-payload",
+    "name": "\"Alpha-channel LSB all-ones means encrypted payload\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2020-01-01", null],
+    "confidence": "primary",
+    "aliases": ["alpha-lsb-myth"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb"],
+    "technical_body": {
+      "claim": "If every alpha-channel byte's low bit is 1, that's an encrypted payload",
+      "match_patterns": ["alpha", "(all.?ones|=\\s*255|lsb\\s*=\\s*1|every.*(byte|bit))", "(payload|encrypted|cipher)"],
+      "verdict": "false",
+      "correct_form": "Alpha=255-everywhere (all-ones LSB on the alpha channel) usually means (a) the source image was fully opaque, or (b) the hider deliberately kept alpha at 255 as a fingerprint while writing to RGB. It is NOT ciphertext. Note it as a fingerprint and move to RGB — that's where the payload almost certainly is.",
+      "common_source": "chi-square false-fire on a uniform channel"
+    }
+  },
+  {
+    "id": "myth-jpeg-steg-survives-recode",
+    "name": "\"JPEG DCT steg survives arbitrary re-encoding\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "primary",
+    "aliases": ["dct-recode-myth"],
+    "citations": ["itu-t81-jpeg", "westfeld-2001-f5", "st3gg-transport-results-slack"],
+    "see_also": ["image-f5", "image-jsteg", "image-dct", "sv-f5-slack-upload"],
+    "technical_body": {
+      "claim": "JPEG DCT steg (F5, jsteg, OutGuess) survives any downstream JPEG re-encode",
+      "match_patterns": ["(dct|f5|jsteg|outguess)", "(re.?encod|recompress|re.?quantiz|slack|whatsapp|telegram)", "surviv"],
+      "verdict": "false",
+      "correct_form": "DCT steg only survives if the destination quantization table matches (or nearly matches) the source. Slack, WhatsApp, Telegram photo mode all re-quantize to their own tables — F5 and jsteg die. Tuned DCT variants (medium/high robustness on ST3GG's dct_encode) can survive one specific re-encoder if pre-flighted, but that's a fragile luck-based case, not a general property.",
+      "common_source": "confusing 'DCT-domain is more robust than LSB' with 'DCT-domain is transport-agnostic'"
+    }
+  },
+  {
+    "id": "myth-emoji-tag-survives-paste",
+    "name": "\"Emoji tag-sequence steg survives Slack paste\"",
+    "category": "myth",
+    "carrier_family": "emoji",
+    "layer": "character",
+    "era_bounds": ["2026-07-25", null],
+    "confidence": "primary",
+    "aliases": ["emoji-tag-paste-myth"],
+    "citations": ["st3gg-transport-results-slack"],
+    "see_also": ["emoji-tag-sequence", "transport-slack-paste", "transport-slack-snippet"],
+    "technical_body": {
+      "claim": "The 'black flag + tag chars' payload survives when pasted into a Slack message body",
+      "match_patterns": ["(emoji|tag|black.?flag)", "slack", "(paste|body|post)"],
+      "verdict": "false",
+      "correct_form": "Slack canonicalizes emoji to :colon_form: on the wire; the receiver renders a fresh base emoji with no trailing tag chars. Any payload riding an emoji through slack_paste is downstream of that canonicalization. Use slack_snippet instead — raw bytes bypass the render pipeline.",
+      "common_source": "generalizing from raw-file transports (survives) to rendered-post transports (does not)"
+    }
+  },
+  {
+    "id": "myth-audio-lsb-mp3",
+    "name": "\"Audio LSB survives MP3 re-encoding\"",
+    "category": "myth",
+    "carrier_family": "audio",
+    "layer": "bit",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "primary",
+    "aliases": ["audio-lsb-mp3-myth", "pcm-lsb-mp3-myth"],
+    "citations": ["anderson-petitcolas-1998-survey", "kessler-primer"],
+    "see_also": ["audio-lsb"],
+    "technical_body": {
+      "claim": "PCM sample LSB payloads survive MP3 (or AAC, Opus) re-encoding",
+      "match_patterns": ["(audio|pcm|sample|\\bwav\\b|flac)", "\\blsb\\b", "(mp3|aac|opus|ogg)"],
+      "verdict": "false",
+      "correct_form": "MP3, AAC, and Opus are lossy perceptual codecs — they discard sub-perceptual detail and quantize to a modified DCT / MDCT domain. Pixel-domain sample LSB dies to the first re-encode. Options that survive lossy audio: echo-hiding, spread-spectrum, phase-coding tuned for the target codec (and even those need per-codec tuning). Ship WAV/FLAC end-to-end if you must LSB.",
+      "common_source": "assuming audio codecs behave like PNG (lossless) when they behave like JPEG (lossy)"
+    }
+  },
+  {
+    "id": "myth-slack-strips-pixels",
+    "name": "\"Slack strips PNG pixel bytes on upload\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2026-07-25", null],
+    "confidence": "primary",
+    "aliases": ["slack-idat-strip-myth", "slack-pixels-recoded-myth"],
+    "citations": ["st3gg-transport-results-slack", "rfc-2083-png"],
+    "see_also": ["image-lsb", "transport-slack-upload"],
+    "technical_body": {
+      "claim": "Slack re-encodes or strips PNG pixel data (IDAT) on file upload",
+      "match_patterns": ["slack", "png", "(strip|recod|re.?encod|destroy|mangle)", "(pixel|idat)"],
+      "verdict": "false",
+      "correct_form": "Slack's file-upload path serves PNG IDAT bytes byte-identical from CDN. LSB and other pixel-domain hides survive slack_upload. What Slack DOES strip is named text chunks (tEXt, iTXt, zTXt) and EXIF/XMP/IPTC. Pixel data is untouched — that is why LSB is the recommended payload layer for slack_upload.",
+      "common_source": "generalizing from 'Slack strips metadata' to 'Slack recompresses everything'"
+    }
+  },
+  {
+    "id": "myth-metadata-survives-anywhere",
+    "name": "\"Image metadata survives on every transport\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2010-01-01", null],
+    "confidence": "primary",
+    "aliases": ["exif-anywhere-myth"],
+    "citations": ["st3gg-transport-matrix", "st3gg-transport-results-slack"],
+    "see_also": ["image-png-text-chunk", "transport-slack-upload", "transport-whatsapp-photo", "transport-signal-attachment"],
+    "technical_body": {
+      "claim": "EXIF / XMP / IPTC (or named PNG text chunks) survive across every consumer messaging transport",
+      "match_patterns": ["(exif|xmp|iptc|metadata)", "(everywhere|every.*(messenger|transport|channel|platform)|all.*(channel|messenger|platform)|any.*(messenger|transport|channel))"],
+      "verdict": "false",
+      "correct_form": "Almost every consumer messenger strips metadata: Slack, WhatsApp, Signal, iMessage, Discord all remove EXIF/XMP/IPTC on upload (privacy default). Named PNG text chunks are stripped by Slack too. Metadata survives file-bytes transports (email attachment, GitHub raw, HTTP direct, Telegram-as-file). If you need out-of-band data to survive a messenger, use a PNG private (4-char) chunk or embed inside pixel/coefficient space.",
+      "common_source": "confusing 'metadata is a spec-defined field' with 'metadata is preserved in transport'"
+    }
+  },
+  {
+    "id": "myth-vs-terminal",
+    "name": "\"Variation selectors survive terminal mouse-copy\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2018-01-01", null],
+    "confidence": "primary",
+    "aliases": ["vs-terminal-myth"],
+    "citations": ["unicode-variation-selectors", "st3gg-field-guide"],
+    "see_also": ["text-variation", "transport-terminal-stdout", "transport-pbcopy"],
+    "technical_body": {
+      "claim": "Variation selectors (VS1-VS256, U+FE00-FE0F, U+E0100-E01EF) survive terminal mouse-select copy",
+      "match_patterns": ["(variation.?selector|\\bvs.?16\\b|fe0[0-9a-f]|e010[0-9a-f]|e01e[0-9a-f])", "terminal", "(surviv|preserv|round.?trip|work|copy)"],
+      "verdict": "false",
+      "correct_form": "Terminal mouse-copy canonicalizes to the visible glyph stream; variation selectors are zero-width formatting characters that get dropped in that path. They survive the byte-stream path (pbcopy, xclip, clip.exe, file redirect). If you need VS payloads to round-trip through a terminal, wrap the copy in a raw-bytes helper, not the OS text-selection.",
+      "common_source": "assuming 'terminal displays my char' implies 'terminal copy preserves my char'"
+    }
+  },
+  {
+    "id": "myth-polyglot-order",
+    "name": "\"Polyglot files decode identically regardless of container order\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2010-01-01", null],
+    "confidence": "primary",
+    "aliases": ["polyglot-order-myth"],
+    "citations": ["albertini-polyglots"],
+    "see_also": ["image-polyglot", "image-trailing-bytes"],
+    "technical_body": {
+      "claim": "You can concatenate format headers in any order and every decoder still recognizes the file",
+      "match_patterns": ["polyglot", "(any.*order|either.*order|regardless.*order|no.*matter.*order|any.*(container|format).*first)"],
+      "verdict": "needs_qualification",
+      "correct_form": "Polyglot construction depends on decoder start-offset rules. PNG/JPEG require their signature at byte 0; ZIP scans from the END (End of Central Directory record). That is why PNG+ZIP polyglots put PNG first and ZIP trailer last. Formats like PDF that accept leading garbage (up to 1024 bytes before %PDF-) permit more layouts. Order is a hard constraint per-format, not a free variable — see Albertini's catalog.",
+      "common_source": "informal reading of 'polyglots are magic' without accounting for per-format offset rules"
+    }
+  },
+  {
+    "id": "myth-f5-any-decoder",
+    "name": "\"Any JPEG tool can decode F5 payloads\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["2001-01-01", null],
+    "confidence": "primary",
+    "aliases": ["f5-any-decoder-myth"],
+    "citations": ["westfeld-2001-f5"],
+    "see_also": ["image-f5", "image-jsteg"],
+    "technical_body": {
+      "claim": "Any generic JPEG (or JPEG-stego) tool can decode an F5 payload",
+      "match_patterns": ["\\bf5\\b", "(any|generic|standard|arbitrary|every).{0,20}(jpeg|tool|decoder|library|reader)", "(decode|read|parse|extract)"],
+      "verdict": "false",
+      "correct_form": "F5 uses matrix encoding over the JPEG DCT coefficient stream with a specific permutation seeded from a passphrase, plus shrinkage handling for the sign-flip case. Only an F5-aware decoder that knows the seed and matrix parameters can extract the payload — a stock libjpeg or a jsteg / OutGuess tool sees noise. The four common JPEG-stego formats (F5, jsteg, OutGuess, steghide) are all mutually incompatible.",
+      "common_source": "conflating 'reads JPEGs' with 'reads any JPEG-embedded payload format'"
+    }
+  },
+  {
+    "id": "myth-chi-square-outguess",
+    "name": "\"Chi-square attacks detect OutGuess\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["chi2-outguess-myth"],
+    "citations": ["westfeld-pfitzmann-1999-chi2", "provos-2001-outguess"],
+    "see_also": ["image-f5"],
+    "technical_body": {
+      "claim": "The Westfeld-Pfitzmann chi-square attack reliably detects OutGuess payloads",
+      "match_patterns": ["chi.?square", "outguess", "(detect|find|catch|reveal|reliable)"],
+      "verdict": "false",
+      "correct_form": "OutGuess was specifically designed to defeat the chi-square attack — after embedding, it makes a second pass that corrects the DCT coefficient histogram back to its original distribution. Chi-square estimates run near zero on OutGuess output. Detection requires a different attack family (calibration-based blockiness, SPA, or targeted machine-learning steganalysis).",
+      "common_source": "assuming a single detector generalizes across every JPEG stego tool"
+    }
+  },
+  {
+    "id": "myth-encryption-hides-steg",
+    "name": "\"Encryption alone makes steg undetectable\"",
+    "category": "myth",
+    "carrier_family": "universal",
+    "layer": "semantic",
+    "era_bounds": ["1983-01-01", null],
+    "confidence": "primary",
+    "aliases": ["encryption-hides-myth"],
+    "citations": ["simmons-1983-prisoners", "anderson-petitcolas-1998-survey"],
+    "see_also": ["image-lsb", "image-f5"],
+    "technical_body": {
+      "claim": "Encrypting the payload before embedding makes the steganographic channel undetectable",
+      "match_patterns": ["(encrypt|cipher|aes|ciphertext)", "(undetect|invisible|unnotice|indistinguish)", "(cover|steg|carrier|embed|hide)"],
+      "verdict": "false",
+      "correct_form": "Encryption raises payload entropy toward uniform. Statistical detectors (chi-square, RS, SPA, bit-plane entropy) key on distribution shifts in the cover — ciphertext looks maximally random, which is exactly what those detectors flag. Encryption protects payload confidentiality *after* discovery; it does not hide the channel. Undetectability comes from matching cover statistics (matrix encoding, model-preserving embed), not from cipher choice.",
+      "common_source": "confusing 'ciphertext looks random' with 'the channel looks empty'"
+    }
+  },
+  {
+    "id": "myth-unicode-tag-passes-sanitizers",
+    "name": "\"Unicode tag-block payloads pass every input sanitizer\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2024-01-01", null],
+    "confidence": "primary",
+    "aliases": ["tag-sanitizer-myth"],
+    "citations": ["unicode-tag-block", "greenberg-2024-tag-injection"],
+    "see_also": ["text-invisible-ink", "emoji-tag-sequence"],
+    "technical_body": {
+      "claim": "Unicode tag-block characters (U+E0000-U+E007F) pass through every search box, input sanitizer, or content filter untouched",
+      "match_patterns": ["(unicode.?tag|tag.?block|e00[0-9a-f]{2}|invisible.?ink)", "(search|sanitiz|input|filter|content.?filter|moderat)", "(safe|untouched|surviv|pass|through|invisible)"],
+      "verdict": "false",
+      "correct_form": "The 2024–2026 wave of prompt-injection via tag characters made every major LLM vendor and many web sanitizers add explicit tag-block strippers or warnings. Slack, ChatGPT, Claude, and Google Search have all shipped mitigations. Assume tag payloads survive plain UTF-8 pipelines (chat, code, git commits) but plan on stripping in any moderation-adjacent path. Test each specific target before trusting it.",
+      "common_source": "extrapolating from 'invisible in my terminal' to 'invisible to defenders' — attackers noticed first, defenders caught up"
+    }
+  },
+  {
+    "id": "myth-imessage-original-bytes",
+    "name": "\"iMessage delivers original file bytes end-to-end\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2016-01-01", null],
+    "confidence": "primary",
+    "aliases": ["imessage-bytes-myth"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-imessage-photo", "transport-imessage-attachment"],
+    "technical_body": {
+      "claim": "iMessage always delivers the sender's original file bytes to the recipient unchanged",
+      "match_patterns": ["imessage", "(original|identical|unmodified|untouched|byte.identical)", "(bytes|file|attach|photo|image)"],
+      "verdict": "needs_qualification",
+      "correct_form": "iMessage has two paths. The 'Attach File' / iCloud attachment path (transport-imessage-attachment) is generally file-byte-identical. The inline photo path (transport-imessage-photo) can HEIC-transcode based on device pair, OS version, and the photo's originating format — the exact triggering conditions are undocumented. Always use the attachment path if byte-identical delivery matters.",
+      "common_source": "generalizing from 'my last photo looked fine' to 'all iMessage photos byte-round-trip'"
+    }
+  },
+  {
+    "id": "myth-pvd-survives-jpeg",
+    "name": "\"PVD survives JPEG re-encoding\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["pvd-jpeg-myth"],
+    "citations": ["itu-t81-jpeg", "kessler-primer"],
+    "see_also": ["image-pvd", "image-f5"],
+    "technical_body": {
+      "claim": "Pixel-Value Differencing (PVD) survives JPEG (or any lossy) re-encoding",
+      "match_patterns": ["\\bpvd\\b", "(jpeg|lossy|re.?encod|recompress)", "(surviv|robust|through|safe)"],
+      "verdict": "false",
+      "correct_form": "PVD embeds bits into the difference between adjacent pixel pairs, chosen to fall in perceptually-tolerated ranges. It lives at the pixel layer just like LSB does, so any lossy re-encode (JPEG, HEIC, WebP-lossy, MP4 for video frames) destroys the adjacent-difference structure. PVD's advantage over LSB is per-pair capacity variation and psychovisual smoothness, NOT robustness to re-encoding. Ship PVD through byte-identical transports only.",
+      "common_source": "confusing PVD's *perceptual* stealth advantage with *statistical* or *transport* robustness"
+    }
+  },
+  {
+    "id": "myth-github-strips-exif",
+    "name": "\"GitHub uploads strip EXIF metadata\"",
+    "category": "myth",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["2015-01-01", null],
+    "confidence": "primary",
+    "aliases": ["github-exif-myth"],
+    "citations": ["st3gg-transport-matrix"],
+    "see_also": ["transport-github-upload", "image-png-text-chunk"],
+    "technical_body": {
+      "claim": "GitHub strips EXIF / XMP / metadata from images added to a repo",
+      "match_patterns": ["github", "(strip|remov|delet|scrub)", "(exif|xmp|iptc|metadata)"],
+      "verdict": "false",
+      "correct_form": "GitHub stores repo blobs byte-identical (a commit is a Merkle tree of exact bytes). PNG tEXt/iTXt/zTXt, JPEG EXIF/XMP/IPTC, and all other metadata slots round-trip through `git push` and `raw.githubusercontent.com`. GitHub's *image rendering* on issue/PR/README previews goes through a proxy (camo) that may serve resized versions for very large images, but the source blob is preserved. Use the raw URL if you need the original.",
+      "common_source": "confusing 'social platforms strip metadata' with 'git repos strip metadata'"
+    }
+  }
+]

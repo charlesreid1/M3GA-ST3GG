@@ -7,7 +7,7 @@ import io
 import pytest
 from PIL import Image
 
-from jailbreak_core import (
+from m3gast3gg.core.jailbreak import (
     EMOJI_TAG_BASE,
     INJECTION_FILENAME_TEMPLATES,
     JAILBREAK_TEMPLATES,
@@ -30,7 +30,7 @@ from jailbreak_core import (
     list_templates_by_model,
     list_templates_by_technique,
 )
-from unicode_tags import TAG_BASE, TAG_END
+from m3gast3gg.core.unicode_tags import TAG_BASE, TAG_END
 
 from tests.conftest import requires_crypto
 
@@ -118,7 +118,7 @@ def test_compose_image_jailbreak_roundtrip(medium_carrier):
     assert isinstance(payload, JailbreakPayload)
     assert payload.carrier_image is not None
     # Decode LSB out of the stego image
-    from img_core import create_config, decode
+    from m3gast3gg.core.img import create_config, decode
     decoded = decode(payload.carrier_image, create_config(channels="RGB", bits=1))
     assert decoded == payload.text_content.encode("utf-8")
 
@@ -136,7 +136,7 @@ def test_compose_image_jailbreak_filename(medium_carrier):
 
 
 def test_compose_image_jailbreak_metadata(medium_carrier):
-    from img_core import extract_text_chunks
+    from m3gast3gg.core.img import extract_text_chunks
 
     payload = compose_image_jailbreak(
         "developer_mode",
@@ -152,8 +152,8 @@ def test_compose_image_jailbreak_metadata(medium_carrier):
 
 @requires_crypto
 def test_compose_image_jailbreak_encrypted(medium_carrier):
-    from crypto import decrypt
-    from img_core import create_config, decode
+    from m3gast3gg.core.crypto import decrypt
+    from m3gast3gg.core.img import create_config, decode
 
     payload = compose_image_jailbreak(
         "pliny_classic",
@@ -184,7 +184,7 @@ def test_compose_image_jailbreak_trailing(medium_carrier):
 
 
 def test_compose_text_jailbreak_roundtrip():
-    from text_core import decode_zero_width
+    from m3gast3gg.core.text import decode_zero_width
     cover = "The quick brown fox jumps over the lazy dog. " * 4
     payload = compose_text_jailbreak(
         "system_prompt_leak",
@@ -214,7 +214,7 @@ def test_detect_injection_filename_negative():
 
 
 def test_detect_jailbreak_in_chunks_positive(medium_carrier):
-    from img_core import inject_text_chunk
+    from m3gast3gg.core.img import inject_text_chunk
 
     png = _png_bytes(medium_carrier)
     body = get_jailbreak_template("pliny_classic")
@@ -227,7 +227,7 @@ def test_detect_jailbreak_in_chunks_positive(medium_carrier):
 
 
 def test_detect_jailbreak_in_chunks_negative(medium_carrier):
-    from img_core import inject_text_chunk
+    from m3gast3gg.core.img import inject_text_chunk
 
     png = _png_bytes(medium_carrier)
     png = inject_text_chunk(png, "Comment", "just a friendly photo of a cat")
@@ -366,7 +366,7 @@ def test_detect_jailbreak_payload_flags_bare_tag_run_without_template_match():
 # ---------- Obfuscation pre-transform chain ----------
 
 def test_compose_text_jailbreak_applies_obfuscation_before_stego():
-    from text_core import decode_zero_width
+    from m3gast3gg.core.text import decode_zero_width
     cover = "The quick brown fox jumps over the lazy dog. " * 4
     payload = compose_text_jailbreak(
         "system_prompt_leak",
@@ -434,7 +434,7 @@ def test_compose_unicode_tag_jailbreak_fullwidth_rejected():
 # ---------- Fullwidth detection signal ----------
 
 def test_detect_jailbreak_payload_flags_fullwidth():
-    from transforms_core import fullwidth_text
+    from m3gast3gg.core.transforms import fullwidth_text
     # A neutral sentence in fullwidth — no jailbreak patterns, no template
     # match, but should still trip the fullwidth obfuscation signal.
     text = fullwidth_text("hello world this is a longer sentence to clear threshold")

@@ -7,7 +7,7 @@ import wave
 
 import pytest
 
-from analysis_tools import detect_file_type
+from m3gast3gg.core.analysis import detect_file_type
 
 
 AUDIO_CASES = [

@@ -1,0 +1,119 @@
+[
+  {
+    "id": "fmt-png",
+    "name": "PNG (Portable Network Graphics)",
+    "category": "carrier_format",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["1996-10-01", null],
+    "confidence": "primary",
+    "aliases": ["png", "portable-network-graphics"],
+    "citations": ["rfc-2083-png"],
+    "see_also": ["fmt-jpeg", "layer-container"],
+    "technical_body": {
+      "magic_bytes": "89 50 4E 47 0D 0A 1A 0A",
+      "end_marker": "IEND chunk (CRC 0xAE426082)",
+      "chunk_grammar": "length(4) + type(4) + data(length) + crc(4); each chunk type's first letter case flags ancillary/private/reserved/safe-to-copy",
+      "critical_chunks": ["IHDR", "PLTE", "IDAT", "IEND"],
+      "ancillary_text_chunks": ["tEXt", "zTXt", "iTXt"],
+      "metadata_slots": ["tEXt (Latin-1 key=val)", "zTXt (deflate-compressed key=val)", "iTXt (UTF-8 key=val, language tags)", "pHYs", "tIME"],
+      "private_chunk_convention": "second letter lowercase (e.g. `stEg`) — parsers preserve unknown chunks by default"
+    },
+    "notes": "PNG's chunk grammar is the most stego-friendly of the common image formats. Named text chunks are stripped by some sanitizers; private chunks slip through most (see Slack survival for the exact case)."
+  },
+  {
+    "id": "fmt-jpeg",
+    "name": "JPEG (baseline / progressive)",
+    "category": "carrier_format",
+    "carrier_family": "image",
+    "layer": "coefficient",
+    "era_bounds": ["1992-09-01", null],
+    "confidence": "primary",
+    "aliases": ["jpeg", "jpg"],
+    "citations": ["itu-t81-jpeg"],
+    "see_also": ["fmt-png", "layer-coefficient"],
+    "technical_body": {
+      "magic_bytes": "FF D8 FF",
+      "end_marker": "FF D9 (EOI)",
+      "marker_grammar": "SOI (FFD8), APPn (FFE0..FFEF, EXIF/XMP live here), DQT (FFDB), DHT (FFC4), SOF0/SOF2 (FFC0/FFC2), SOS (FFDA), EOI (FFD9)",
+      "block_structure": "8×8 DCT blocks, zig-zag ordered, per-quantization-table scaled",
+      "metadata_slots": ["APP0 (JFIF)", "APP1 (EXIF/XMP)", "APP2 (ICC)", "APP13 (IPTC)"],
+      "dct_targets_for_stego": "AC coefficients only; DC coefficients are too perceptually loaded"
+    },
+    "notes": "F5 / jsteg / OutGuess all embed in quantized AC DCT coefficients. Every re-quantization pass (Slack CDN, WhatsApp photo mode, JPEG->JPEG at different Q) is a threat to the payload."
+  },
+  {
+    "id": "fmt-gif",
+    "name": "GIF (Graphics Interchange Format)",
+    "category": "carrier_format",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["1987-01-01", null],
+    "confidence": "primary",
+    "aliases": ["gif"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["fmt-png"],
+    "technical_body": {
+      "magic_bytes": "GIF87a or GIF89a",
+      "end_marker": "0x3B trailer byte",
+      "block_grammar": "Logical Screen Descriptor + Global Color Table + Image Descriptors + Extension Blocks (0x21) + Trailer (0x3B)",
+      "metadata_slots": ["Comment Extension (0x21 0xFE)", "Application Extension (0x21 0xFF)"],
+      "steg_targets": ["palette entries (last-few-colors LSB)", "comment extension bodies", "sub-block boundaries"]
+    },
+    "notes": "GIF87a/89a. Palette-indexed with per-palette LSB steg viable. Comment extensions are the equivalent of PNG tEXt chunks."
+  },
+  {
+    "id": "fmt-wav",
+    "name": "WAV / RIFF (PCM audio)",
+    "category": "carrier_format",
+    "carrier_family": "audio",
+    "layer": "bit",
+    "era_bounds": ["1991-01-01", null],
+    "confidence": "primary",
+    "aliases": ["wav", "riff-wav"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["fmt-png"],
+    "technical_body": {
+      "magic_bytes": "RIFF....WAVE",
+      "chunk_grammar": "RIFF header + fmt chunk (PCM parameters) + data chunk (raw samples) + optional LIST/INFO chunks",
+      "steg_targets": ["LSB of PCM samples (1-3 bits per sample tolerable)", "LIST/INFO metadata chunks", "post-data trailing bytes"]
+    },
+    "notes": "PCM WAV is the audio analogue of a lossless bitmap. LSB per-sample survives byte-identical transfers and dies to any lossy re-encode (MP3, AAC)."
+  },
+  {
+    "id": "fmt-pcap",
+    "name": "PCAP (packet capture)",
+    "category": "carrier_format",
+    "carrier_family": "network",
+    "layer": "container",
+    "era_bounds": ["1998-01-01", null],
+    "confidence": "primary",
+    "aliases": ["pcap", "libpcap"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["fmt-wav"],
+    "technical_body": {
+      "magic_bytes": "D4 C3 B2 A1 or A1 B2 C3 D4 (endian-flipped)",
+      "frame_grammar": "PCAP global header + per-packet timestamp/caplen/wirelen + Ethernet/IP/TCP/UDP payload",
+      "steg_targets": ["IP TTL", "IP ID", "TCP ISN", "TCP timestamp", "TCP window", "TCP urgent", "ICMP payload", "DNS labels", "DNS TXT", "HTTP headers", "inter-packet timing"]
+    },
+    "notes": "Every field the RFC doesn't nail down to a single value is a potential steg carrier. See network_core for the specific fields ST3GG's encoder writes."
+  },
+  {
+    "id": "fmt-utf8-text",
+    "name": "UTF-8 plain text",
+    "category": "carrier_format",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1993-01-01", null],
+    "confidence": "primary",
+    "aliases": ["utf-8", "text", "plain-text"],
+    "citations": ["rfc-3629-utf8", "unicode-nfkc"],
+    "see_also": ["fmt-png"],
+    "technical_body": {
+      "encoding": "UTF-8 (1-4 bytes per codepoint)",
+      "steg_targets": ["zero-width codepoints (U+200B, U+200C, U+200D, U+FEFF)", "confusable homoglyph pairs (Latin/Cyrillic, ASCII/CJK-fullwidth)", "variation selectors (U+FE00-FE0F, U+E0100-E01EF)", "combining marks (CGJ, diacritics)", "tag block (U+E0020-E007F)", "directional overrides (RLO/LRO/PDF)", "trailing/interior whitespace patterns"],
+      "normalization_hazards": ["NFC — merges combining sequences", "NFKC — collapses homoglyphs, fullwidth, mathbold"]
+    },
+    "notes": "The universal text carrier. Every text-steg method operates on UTF-8 codepoints; the only variation is which codepoint class carries the bits."
+  }
+]

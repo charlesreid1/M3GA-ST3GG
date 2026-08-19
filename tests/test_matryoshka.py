@@ -23,11 +23,11 @@ import numpy as np
 # handles the same path insertion for the discovered case.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from img_core import encode, decode, create_config, calculate_capacity
+from m3gast3gg.core.img import encode, decode, create_config, calculate_capacity
 
 # Try to import crypto, but make it optional for testing
 try:
-    import crypto
+    import m3gast3gg.core.crypto as crypto
     HAS_CRYPTO = True
 except Exception:
     HAS_CRYPTO = False

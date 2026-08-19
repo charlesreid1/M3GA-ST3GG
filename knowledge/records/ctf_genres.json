@@ -1,0 +1,139 @@
+[
+  {
+    "id": "ctf-matryoshka-image",
+    "name": "Matryoshka image (recursive nesting)",
+    "category": "ctf_genre",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2018-01-01", null],
+    "confidence": "primary",
+    "aliases": ["matryoshka", "nested-carrier", "russian-doll"],
+    "citations": ["st3gg-field-guide", "st3gg-repo-readme"],
+    "see_also": ["image-matryoshka", "image-lsb"],
+    "technical_body": {
+      "pipeline": ["encrypt payload with a per-level key", "encode into level-N carrier via image-lsb", "the level-N stego becomes the payload for level-(N-1)"],
+      "component_techniques": ["image-lsb", "image-matryoshka"],
+      "typical_depth": "3-11 levels (ST3GG's regression suite tests depth-11)",
+      "detection": "chi-square + RS fire on the outermost carrier; each successive extraction produces another PNG until the innermost flag emerges",
+      "solution_arc": "stegg_lsb_smart_scan → save output → stegg_lsb_smart_scan on the output → repeat until non-image emerges"
+    },
+    "notes": "Compound technique. Each level is an image-lsb hide whose payload happens to be a valid PNG containing another hide. The classic CTF Russian-doll pattern."
+  },
+  {
+    "id": "ctf-chained-carrier",
+    "name": "Chained carriers (image → zip → audio → spectrogram)",
+    "category": "ctf_genre",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2015-01-01", null],
+    "confidence": "primary",
+    "aliases": ["chained-hide", "container-chain"],
+    "citations": ["st3gg-field-guide", "kessler-primer"],
+    "see_also": ["image-trailing-bytes", "image-polyglot", "cap-image-lsb"],
+    "technical_body": {
+      "pipeline": ["outer PNG with trailing ZIP after IEND", "ZIP contains a WAV", "WAV's spectrogram reveals the flag as text"],
+      "component_techniques": ["image-trailing-bytes", "image-polyglot"],
+      "typical_depth": "3-5 stages",
+      "detection": "binwalk on the outer image finds the ZIP; extract the WAV; open in Audacity/Sonic Visualiser with the spectrogram view",
+      "solution_arc": "stegg_detect_trailing → stegg_carve → unzip → open WAV in a spectral tool"
+    },
+    "notes": "Format-diverse chain: each stage is a valid file of a different type. Common at DEF CON steg puzzles."
+  },
+  {
+    "id": "ctf-polyglot-injection",
+    "name": "Polyglot triggers prompt injection",
+    "category": "ctf_genre",
+    "carrier_family": "universal",
+    "layer": "container",
+    "era_bounds": ["2023-01-01", null],
+    "confidence": "community",
+    "aliases": ["polyglot-injection", "dual-parse-attack"],
+    "citations": ["albertini-polyglots", "greenberg-2024-tag-injection"],
+    "see_also": ["image-polyglot", "text-invisible-ink"],
+    "technical_body": {
+      "pipeline": ["craft a file valid as two formats", "one format-parser reads a benign payload", "the other extracts a prompt-injection or hidden-instruction payload (often via Unicode tag chars or image ALT text)"],
+      "component_techniques": ["image-polyglot", "text-invisible-ink"],
+      "detection": "run the file through both interpreters and diff the parsed content; look for Unicode tag characters in extracted text or ALT",
+      "solution_arc": "identify both formats (`file`, `binwalk`), extract with each parser, compare"
+    },
+    "notes": "The 2024-era AI-agent-attack lineage. Combines Ange Albertini's polyglot canon with the Unicode tag block prompt injection wave."
+  },
+  {
+    "id": "ctf-spectrogram-hide",
+    "name": "Spectrogram-hidden image",
+    "category": "ctf_genre",
+    "carrier_family": "audio",
+    "layer": "semantic",
+    "era_bounds": ["1999-01-01", null],
+    "confidence": "primary",
+    "aliases": ["aphex-twin-hide", "spectrogram-steg"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": [],
+    "technical_body": {
+      "pipeline": ["render source text/image as a spectrogram-shaped waveform", "distribute as an audio file (WAV/MP3/FLAC)"],
+      "component_techniques": [],
+      "detection": "open in Audacity → Spectrogram view, or Sonic Visualiser with an FFT window",
+      "solution_arc": "any audio file in a steg CTF → spectrogram view is the second thing to try after LSB",
+      "worked_example": "Aphex Twin's track 'ΔMi−1 = −α ∑n=1N Di[n]' (formula-titled, sometimes indexed as 'Equation' or track 2) on the 1999 Windowlicker EP contains a rendered image of Richard D. James's face in its final ~30 seconds, visible when the audio is opened in a spectrogram view.",
+      "provenance": "The name of the track is literally the equation for delta modulation. The spectrogram-face is documented in Aphex Twin fan forums since ~1999 and picked up by mainstream press (BBC 2015 retrospective, various music-technology writeups). Not folklore — anyone with sox or Audacity can reproduce the view directly from the released audio."
+    },
+    "notes": "The single audio-steg trick that always shows up in DEF CON badges. Cheap for the author, high-impact for the solver."
+  },
+  {
+    "id": "ctf-unicode-tag-jailbreak",
+    "name": "Unicode tag block jailbreak / prompt injection",
+    "category": "ctf_genre",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["2024-01-01", null],
+    "confidence": "primary",
+    "aliases": ["hidden-instructions", "tag-jailbreak", "e0020-injection"],
+    "citations": ["greenberg-2024-tag-injection", "unicode-tag-block"],
+    "see_also": ["text-invisible-ink", "myth-zero-width-invisible-everywhere"],
+    "technical_body": {
+      "pipeline": ["author benign-looking cover text", "append a U+E0020..U+E007E ASCII-shadow payload with prompt-injection instructions", "target LLM tokenizer preserves the tag chars and the model reads them as instructions"],
+      "component_techniques": ["text-invisible-ink"],
+      "detection": "raw byte inspection; the payload is one tag codepoint per printable-ASCII character of the hidden instruction",
+      "solution_arc": "hex-dump the suspect text → look for U+E0000..U+E007F range → decode via ASCII-shadow (subtract 0xE0000, cast to byte)"
+    },
+    "notes": "The 2024 hidden-prompt-injection wave. Ties directly to text-invisible-ink; the ST3GG jailbreak_core composers stitch this with obfuscation transforms."
+  },
+  {
+    "id": "ctf-alpha-channel-hide",
+    "name": "Alpha-channel-only hide",
+    "category": "ctf_genre",
+    "carrier_family": "image",
+    "layer": "bit",
+    "era_bounds": ["2015-01-01", null],
+    "confidence": "primary",
+    "aliases": ["alpha-hide"],
+    "citations": ["st3gg-field-guide"],
+    "see_also": ["image-lsb", "myth-lsb-alpha-payload", "sig-alpha-all-ones"],
+    "technical_body": {
+      "pipeline": ["set RGB to any innocent content", "write payload to alpha LSB"],
+      "component_techniques": ["image-lsb"],
+      "detection": "chi-square screams on alpha but is quiet on RGB; visual attack on alpha bit-plane exposes the payload",
+      "solution_arc": "stegg_triage → notice alpha-only anomaly → stegg_decode_manual channels='A' bits_per_channel=1"
+    },
+    "notes": "Frequently mis-diagnosed as 'encrypted RGB' (see myth-lsb-alpha-payload). Alpha all-ones means fully-opaque source, not payload."
+  },
+  {
+    "id": "ctf-png-private-chunk",
+    "name": "PNG private-chunk metadata hide",
+    "category": "ctf_genre",
+    "carrier_family": "image",
+    "layer": "container",
+    "era_bounds": ["1997-03-01", null],
+    "confidence": "primary",
+    "aliases": ["private-chunk-hide"],
+    "citations": ["rfc-2083-png", "st3gg-transport-results-slack"],
+    "see_also": ["image-png-private-chunk", "image-png-text-chunk"],
+    "technical_body": {
+      "pipeline": ["author image", "add a 4-char private chunk (lowercase second char = private, uppercase first char = ancillary) containing the payload"],
+      "component_techniques": ["image-png-private-chunk"],
+      "detection": "stegg_read_png_chunks lists every chunk; the odd 4-char type is the tell",
+      "solution_arc": "stegg_read_metadata → notice unfamiliar chunk name → stegg_read_png_chunks → extract the chunk data"
+    },
+    "notes": "Survives Slack upload where the named text chunks don't (per sv-png-private-chunk-slack-upload). Common author-friendly hide with a cheap solver arc."
+  }
+]

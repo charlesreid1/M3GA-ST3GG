@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-import crypto
-from img_core import create_config, decode, detect_encoding, encode
+import m3gast3gg.core.crypto as crypto
+from m3gast3gg.core.img import create_config, decode, detect_encoding, encode
 
 pytestmark = pytest.mark.pipeline
 
