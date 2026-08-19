@@ -8,10 +8,10 @@ lead half of the catalog. Controls are how we notice when the match_patterns
 grow too eager and start reporting bluffs.
 
 Integrity tests catch silent rot: orphan bibliography entries, unresolved
-see_also links, categories the plan promised but the KR forgot.
+see_also links, and categories the KR forgot.
 
-Source ground-truth: plan-knowledge-base.md, the seeded myths.json trap
-patterns, and the Slack probe (TRANSPORT_RESULTS_SLACK.json).
+Source ground-truth: the seeded myths.json trap patterns and the Slack
+probe (TRANSPORT_RESULTS_SLACK.json).
 """
 
 from __future__ import annotations

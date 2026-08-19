@@ -445,15 +445,14 @@ M3GA-ST3GG/
 ├── skills/, docs/
 ├── knowledge/                # two-layer corpus (typed KR + prose); wheel force-includes it as `m3gast3gg._knowledge`
 ├── pyproject.toml            # hatchling, src-layout
-├── README.md, INSTALL.md, AGENTS.md, LICENSE
-├── plan-knowledge-base.md    # motivation + tiered fill plan for the KR
+└── README.md, INSTALL.md, AGENTS.md, LICENSE
 ```
 
 See [AGENTS.md](AGENTS.md) for the full layout with per-module notes.
 
 ## ⊰ Knowledge Base ⊱
 
-ST3GG ships a two-layer knowledge base modeled on PHR34CKER5's split-per-topic pattern. Agents connected via the MCP server (or humans reading the repo) get **cited numeric answers** instead of folklore — every technique, transport, detector, and myth is a typed record with a mandatory citation envelope.
+ST3GG ships a two-layer knowledge base with a split-per-topic pattern. Agents connected via the MCP server (or humans reading the repo) get **cited numeric answers** instead of folklore — every technique, transport, detector, and myth is a typed record with a mandatory citation envelope.
 
 ### Typed records — `knowledge/records/*.json`
 
@@ -495,7 +494,7 @@ The `stegg-mcp` server exposes ten tools that read this knowledge base:
 - `stegg_search_records` — filter records by `category` / `carrier_family` / `layer` / `transport`.
 - `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore` — enumerate + read + regex-search the prose corpus.
 
-See [`knowledge/MANIFEST.md`](knowledge/MANIFEST.md), [`knowledge/records/README.md`](knowledge/records/README.md), and [`plan-knowledge-base.md`](plan-knowledge-base.md) for the discipline conventions and the tiered fill plan.
+See [`knowledge/MANIFEST.md`](knowledge/MANIFEST.md) and [`knowledge/records/README.md`](knowledge/records/README.md) for the discipline conventions.
 
 ---
 
@@ -532,7 +531,7 @@ See [`knowledge/MANIFEST.md`](knowledge/MANIFEST.md), [`knowledge/records/README
 ║  ✓ Password-derived headers (stealth mode)                       ║
 ║  ✓ AES-256-GCM with PBKDF2 600k iterations                      ║
 ║  ✓ AI carrier image generation (OpenRouter + procedural)         ║
-║  ✓ 109 example files, 568 automated tests                        ║
+║  ✓ 109 example files, 659 automated tests                        ║
 ║  ✓ pip install stegg  (upstream only — this fork: from source)   ║
 ║  ✓ 100% browser-based at ste.gg                                  ║
 ║                                                                  ║

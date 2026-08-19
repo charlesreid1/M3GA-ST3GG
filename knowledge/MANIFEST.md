@@ -1,7 +1,6 @@
 # ST3GG knowledge base — manifest
 
-Two-layer corpus, modeled directly on PHR34CKER5's split. See
-`../plan-knowledge-base.md` for the design.
+Two-layer corpus: typed record KR + split-per-topic prose.
 
 - **`records/`** — typed KR: JSON arrays with a mandatory envelope
   (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`,
@@ -19,8 +18,8 @@ Two-layer corpus, modeled directly on PHR34CKER5's split. See
   `audio/`, `network/`, `document/`, `detection/`, `transport/`,
   `crypto/`, `ctf/`, `history/`, and `glossary/`. Per-technique deep
   splits exist under `image/lsb/`, `image/f5/`, `text/zero-width/`,
-  and `text/homoglyph-cyrillic/`; every other technique named in the
-  plan has an orient README under its topic dir.
+  and `text/homoglyph-cyrillic/`; every other technique has an orient
+  README under its topic dir.
 
   Every markdown file is exposed as an MCP resource at
   `stegg://<topic>/<name>`. The walker is depth-agnostic: subdirectory

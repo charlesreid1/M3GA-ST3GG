@@ -7,13 +7,12 @@ a value the KR promises, one of these tests goes red and points at the
 drift.
 
 This is not a test of ST3GG's language ability — it's a test that the
-numbers, framings, and dates in the records still match what
-plan-knowledge-base.md and the primary bibliography say they should be.
+numbers, framings, and dates in the records still match what the
+primary bibliography says they should be.
 
-Source ground-truth: plan-knowledge-base.md, TRANSPORT_MATRIX.md,
-TRANSPORT_RESULTS_SLACK.json, and the primary bibliography entries
-(Westfeld 2001, Provos 2001, Fridrich 2001, Unicode UTS #36 / UAX #15,
-RFC 2083, ITU-T T.81).
+Source ground-truth: TRANSPORT_MATRIX.md, TRANSPORT_RESULTS_SLACK.json,
+and the primary bibliography entries (Westfeld 2001, Provos 2001,
+Fridrich 2001, Unicode UTS #36 / UAX #15, RFC 2083, ITU-T T.81).
 """
 
 from __future__ import annotations
