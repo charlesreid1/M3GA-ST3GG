@@ -1,43 +1,39 @@
-"""M3GA-ST3GG MCP server: HTTP and stdio transports.
+"""M3GA-ST3GG MCP server built on FastMCP.
 
-Run with:
-    m3gast3gg-mcp                    # HTTP on port 8765
-    m3gast3gg-mcp --port 9000        # HTTP on custom port
-    m3gast3gg-mcp-stdio              # stdio (spawned by MCP clients like Claude Code)
+One entry point exposes three transports behind a single ``--transport``
+flag, mirroring the shape sibling ``phr34cker5`` uses:
 
-Or:
-    python -m m3gast3gg.server           # HTTP
-    python -m m3gast3gg.server --stdio   # stdio (same as m3gast3gg-mcp-stdio)
+    m3gast3gg-mcp --transport stdio               # JSON-RPC over stdin/stdout
+    m3gast3gg-mcp --transport sse                 # legacy SSE on /sse
+    m3gast3gg-mcp --transport streamable-http     # modern HTTP on /mcp  (default)
+    m3gast3gg-mcp                                 # same as --transport streamable-http
+    m3gast3gg-mcp-stdio                           # alias for --transport stdio
 
-HTTP mode: container-to-container use only. No auth. Bind address defaults to 0.0.0.0.
-Stdio mode: the client launches this process; JSON-RPC over stdin/stdout, logs on stderr.
+The ``--stdio`` flag remains as a hidden alias for ``--transport stdio`` so
+existing Claude Desktop / opencode client configs keep working.
+
+The tool executors and JSON schemas registered by ``m3gast3gg.mcp`` are
+adopted verbatim: FastMCP receives the exact ``inputSchema`` dicts the
+low-level server used to emit, and each executor's kwarg-only call
+convention is preserved via a permissive pydantic arg model.
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Any, Callable
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import (
-    Resource,
-    TextContent,
-    Tool,
-)
-import mcp.types as types
-
-import uvicorn
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
-from starlette.types import Receive, Scope, Send
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.resources import FunctionResource
+from mcp.server.fastmcp.tools.base import Tool
+from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
+from pydantic import ConfigDict
 
 from .mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
-from .mcp.knowledge import _iter_lore, _find_lore, KNOWLEDGE_ROOT
+from .mcp.knowledge import KNOWLEDGE_ROOT, _find_lore, _iter_lore
 
 logger = logging.getLogger(__name__)
 
@@ -45,165 +41,193 @@ FIELD_GUIDE_PATH = Path(__file__).parent / "field_guide.md"
 FIELD_GUIDE_URI = "stegg://field-guide"
 LORE_URI_PREFIX = "stegg://"
 
-
-def build_server() -> Server:
-    server: Server = Server("m3gast3gg")
-
-    @server.list_tools()
-    async def _list_tools() -> list[Tool]:
-        return [
-            Tool(
-                name=name,
-                description=schema["description"],
-                inputSchema=schema["inputSchema"],
-            )
-            for name, schema in TOOL_SCHEMAS.items()
-        ]
-
-    @server.call_tool()
-    async def _call_tool(name: str, arguments: dict) -> list[TextContent]:
-        executor = TOOL_EXECUTORS.get(name)
-        if executor is None:
-            return [TextContent(type="text", text=f"Unknown tool '{name}'")]
-        try:
-            result = await executor(**(arguments or {}))
-        except Exception as exc:
-            logger.exception("tool %s crashed", name)
-            result = f"tool {name} crashed: {type(exc).__name__}: {exc}"
-        if not isinstance(result, str):
-            result = str(result)
-        return [TextContent(type="text", text=result)]
-
-    @server.list_resources()
-    async def _list_resources() -> list[Resource]:
-        resources: list[Resource] = []
-        if FIELD_GUIDE_PATH.exists():
-            resources.append(Resource(
-                uri=FIELD_GUIDE_URI,
-                name="ST3GG field guide",
-                description=(
-                    "Complete field guide for the ST3GG steganography analyst persona: "
-                    "technique catalog, signal-reading heuristics, extraction workflow, "
-                    "verdict semantics, code snippets. Read this before analyzing any file."
-                ),
-                mimeType="text/markdown",
-            ))
-        # Prose corpus files as MCP resources at stegg://<topic>/<name>
-        for topic, name, _path in _iter_lore(KNOWLEDGE_ROOT):
-            resources.append(Resource(
-                uri=f"{LORE_URI_PREFIX}{topic}/{name}",
-                name=f"{topic}/{name}",
-                description=f"ST3GG knowledge corpus: {topic}/{name}",
-                mimeType="text/markdown",
-            ))
-        return resources
-
-    @server.read_resource()
-    async def _read_resource(uri) -> str:
-        uri_str = str(uri)
-        if uri_str == FIELD_GUIDE_URI:
-            if FIELD_GUIDE_PATH.exists():
-                return FIELD_GUIDE_PATH.read_text(encoding="utf-8")
-            return "field guide not found on server"
-        if uri_str.startswith(LORE_URI_PREFIX):
-            rest = uri_str[len(LORE_URI_PREFIX):]
-            if "/" in rest:
-                topic, name = rest.split("/", 1)
-                p = _find_lore(KNOWLEDGE_ROOT, topic, name)
-                if p is not None:
-                    return p.read_text(encoding="utf-8")
-        raise ValueError(f"unknown resource: {uri}")
-
-    return server
+INSTRUCTIONS = (
+    "M3GA-ST3GG is a steganography toolkit -- detection, encode, decode, "
+    "capacity, triage across image / text / audio / network carriers, plus "
+    "a typed knowledge base of techniques, transports, and survival data. "
+    "Use `stegg_triage` when you don't know where to start. Read the field "
+    "guide resource at stegg://field-guide before analyzing any file."
+)
 
 
-def build_asgi_app() -> Starlette:
-    server = build_server()
-    session_manager = StreamableHTTPSessionManager(app=server, stateless=True)
+class _PassThroughArgs(ArgModelBase):
+    """Accept any kwargs and return them verbatim.
 
-    async def handle(scope: Scope, receive: Receive, send: Send) -> None:
-        await session_manager.handle_request(scope, receive, send)
+    Executors declare their input schema through ``TOOL_SCHEMAS`` and take
+    ``**kwargs``; the low-level server never validated arguments against
+    the schema, so neither does FastMCP here. This model catches everything
+    the client sends and forwards it to the executor unchanged.
+    """
 
-    from contextlib import asynccontextmanager
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    @asynccontextmanager
-    async def lifespan(app):
-        async with session_manager.run():
-            yield
+    def model_dump_one_level(self) -> dict[str, Any]:  # type: ignore[override]
+        return dict(self.__pydantic_extra__ or {})
 
-    # Accept both /mcp and /mcp/ so clients that omit the trailing slash
-    # don't get a 307 redirect they can't POST through.
-    return Starlette(
-        routes=[
-            Mount("/mcp/", app=handle),
-            Mount("/mcp", app=handle),
-        ],
-        lifespan=lifespan,
+
+def _make_tool(name: str, executor: Callable[..., Any], schema: dict[str, Any]) -> Tool:
+    """Build a FastMCP Tool that reuses our verbatim schema + kwargs executor."""
+
+    async def _adapter(**kwargs: Any) -> str:
+        return await executor(**kwargs)
+
+    _adapter.__name__ = name
+
+    return Tool(
+        fn=_adapter,
+        name=name,
+        title=None,
+        description=schema["description"],
+        parameters=schema["inputSchema"],
+        fn_metadata=FuncMetadata(
+            arg_model=_PassThroughArgs,
+            output_schema=None,
+            output_model=None,
+            wrap_output=False,
+        ),
+        is_async=True,
+        context_kwarg=None,
+        annotations=None,
+        icons=None,
+        meta=None,
     )
 
 
-async def _run_stdio(log_level: str = "info") -> None:
-    """Run the MCP server over stdin/stdout using the reference MCP stdio transport.
+def build_mcp() -> FastMCP:
+    """Construct the FastMCP server with every tool and resource registered."""
+    mcp = FastMCP(name="m3gast3gg", instructions=INSTRUCTIONS)
 
-    Logging is configured to stderr -- the stdio transport reserves stdout
-    for JSON-RPC frames, so anything written there corrupts the protocol.
-    """
+    # Tools: bypass ToolManager.add_tool (which would re-derive the schema
+    # from the function signature) and install pre-built Tool objects with
+    # the exact inputSchema each executor documents in TOOL_SCHEMAS.
+    for tool_name, executor in TOOL_EXECUTORS.items():
+        schema = TOOL_SCHEMAS[tool_name]
+        mcp._tool_manager._tools[tool_name] = _make_tool(tool_name, executor, schema)
+
+    _register_resources(mcp)
+    return mcp
+
+
+def _register_resources(mcp: FastMCP) -> None:
+    """Register the field guide and every prose corpus file as MCP resources."""
+    if FIELD_GUIDE_PATH.exists():
+        mcp.add_resource(FunctionResource(
+            uri=FIELD_GUIDE_URI,  # type: ignore[arg-type]
+            name="ST3GG field guide",
+            description=(
+                "Complete field guide for the ST3GG steganography analyst persona: "
+                "technique catalog, signal-reading heuristics, extraction workflow, "
+                "verdict semantics, code snippets. Read this before analyzing any file."
+            ),
+            mime_type="text/markdown",
+            fn=lambda: FIELD_GUIDE_PATH.read_text(encoding="utf-8"),
+        ))
+
+    for topic, name, path in _iter_lore(KNOWLEDGE_ROOT):
+        uri = f"{LORE_URI_PREFIX}{topic}/{name}"
+        # Bind the path at closure-construction time to avoid the classic
+        # late-binding footgun (`p` inside the lambda would otherwise resolve
+        # to the loop's final value for every registered resource).
+        mcp.add_resource(FunctionResource(
+            uri=uri,  # type: ignore[arg-type]
+            name=f"{topic}/{name}",
+            description=f"ST3GG knowledge corpus: {topic}/{name}",
+            mime_type="text/markdown",
+            fn=(lambda p=path: p.read_text(encoding="utf-8")),
+        ))
+
+    # Templated resource: any stegg://<topic>/<name> URI that isn't already
+    # registered above (e.g. a fresh corpus file added after startup, or a
+    # client speculatively probing) falls through to this handler.
+    @mcp.resource("stegg://{topic}/{name}")
+    def _lore_template(topic: str, name: str) -> str:
+        p = _find_lore(KNOWLEDGE_ROOT, topic, name)
+        if p is None:
+            raise ValueError(f"unknown lore: {topic}/{name}")
+        return p.read_text(encoding="utf-8")
+
+
+mcp = build_mcp()
+
+
+def _configure_logging(log_level: str, *, stdio: bool) -> None:
+    """Route logs to stderr for stdio (stdout is reserved for JSON-RPC)."""
     logging.basicConfig(
         level=log_level.upper(),
         format="%(asctime)s  %(levelname)-7s %(name)s: %(message)s",
-        stream=sys.stderr,
+        stream=sys.stderr if stdio else None,
     )
-
-    server = build_server()
-    logger.info("m3gast3gg stdio server starting")
-    logger.info("tools: %s", ", ".join(TOOL_EXECUTORS.keys()))
-
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
-
-
-def main_stdio() -> None:
-    """Entry point for `m3gast3gg-mcp-stdio`.
-
-    Small argument surface -- stdio clients typically launch the process
-    directly and don't pass configuration. Log level is the one useful knob.
-    """
-    parser = argparse.ArgumentParser(description="M3GA-ST3GG MCP stdio server")
-    parser.add_argument("--log-level", default="info", help="log level for stderr (default info)")
-    args = parser.parse_args()
-    asyncio.run(_run_stdio(log_level=args.log_level))
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="M3GA-ST3GG MCP HTTP server")
-    parser.add_argument("--host", default="0.0.0.0", help="Bind host (default 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=8765, help="Bind port (default 8765)")
-    parser.add_argument("--log-level", default="info", help="uvicorn/log level")
+    """Entry point for ``m3gast3gg-mcp`` (and ``python -m m3gast3gg.server``)."""
+    parser = argparse.ArgumentParser(prog="m3gast3gg-mcp", description="M3GA-ST3GG MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="streamable-http",
+        help=(
+            "MCP transport. `stdio` for local clients (Claude Desktop, opencode). "
+            "`sse` for Server-Sent-Events (legacy MCP web transport). "
+            "`streamable-http` for the modern HTTP transport (default; what "
+            "container-to-container callers currently expect)."
+        ),
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Bind host for sse/streamable-http (default 0.0.0.0). Ignored for stdio.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Bind port for sse/streamable-http (default 8765). Ignored for stdio.",
+    )
+    parser.add_argument("--log-level", default="info", help="log level")
     parser.add_argument(
         "--stdio",
         action="store_true",
-        help="Run in stdio mode instead of HTTP (equivalent to m3gast3gg-mcp-stdio).",
+        help=argparse.SUPPRESS,  # hidden alias for --transport stdio
     )
     args = parser.parse_args()
 
     if args.stdio:
-        asyncio.run(_run_stdio(log_level=args.log_level))
-        return
+        args.transport = "stdio"
 
-    logging.basicConfig(
-        level=args.log_level.upper(),
-        format="%(asctime)s  %(levelname)-7s %(name)s: %(message)s",
-    )
+    _configure_logging(args.log_level, stdio=(args.transport == "stdio"))
 
-    logger.info("m3gast3gg starting on %s:%d, endpoint /mcp", args.host, args.port)
+    if args.transport == "stdio":
+        logger.info("m3gast3gg stdio server starting")
+    else:
+        logger.info(
+            "m3gast3gg starting on %s:%d, transport=%s",
+            args.host,
+            args.port,
+            args.transport,
+        )
     logger.info("tools: %s", ", ".join(TOOL_EXECUTORS.keys()))
 
-    app = build_asgi_app()
-    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+    if args.transport in ("sse", "streamable-http"):
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+
+    mcp.run(transport=args.transport)
+
+
+def main_stdio() -> None:
+    """Entry point for ``m3gast3gg-mcp-stdio`` (alias for ``--transport stdio``)."""
+    parser = argparse.ArgumentParser(
+        prog="m3gast3gg-mcp-stdio",
+        description="M3GA-ST3GG MCP stdio server (alias for `m3gast3gg-mcp --transport stdio`)",
+    )
+    parser.add_argument("--log-level", default="info", help="log level for stderr (default info)")
+    args = parser.parse_args()
+
+    _configure_logging(args.log_level, stdio=True)
+    logger.info("m3gast3gg stdio server starting")
+    logger.info("tools: %s", ", ".join(TOOL_EXECUTORS.keys()))
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

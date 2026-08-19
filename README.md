@@ -323,7 +323,7 @@ pip install 'stegg[all]'
 stegg --help          # Interactive CLI (Rich output)
 stegg --json <cmd>    # Same CLI, JSON output — subprocess-friendly for agents
 stegg-web             # Browser UI (requires the [web] extra — see INSTALL.md)
-m3gast3gg-mcp         # MCP server for AI agents (HTTP; `-stdio` variant also on PATH)
+m3gast3gg-mcp         # MCP server for AI agents; `--transport {stdio,sse,streamable-http}`
 ```
 
 ### AI Agent Integration
@@ -336,9 +336,18 @@ stegg --json encode-cmd -i carrier.png -t "secret" -o stegged.png
 stegg --json decode-cmd -i stegged.png
 stegg --json analyze suspect.png --full
 
-# MCP server (Streamable HTTP by default, stdio also available — results go into agent context)
-m3gast3gg-mcp
+# MCP server (results go into agent context)
+m3gast3gg-mcp                              # streamable-http on :8765/mcp (default)
+m3gast3gg-mcp --transport stdio            # local clients (Claude Desktop, opencode)
+m3gast3gg-mcp --transport sse              # legacy SSE on :8765/sse
+m3gast3gg-mcp-stdio                        # alias for `--transport stdio`
 ```
+
+| Transport         | When to use                                              | Endpoint  |
+|-------------------|----------------------------------------------------------|-----------|
+| `stdio`           | Client spawns the server; JSON-RPC on stdin/stdout       | (n/a)     |
+| `sse`             | Legacy MCP web transport (Server-Sent Events)            | `/sse`    |
+| `streamable-http` | Modern HTTP transport (default)                          | `/mcp`    |
 
 Five docs describe the agent surface. Each has a different audience and a different loading moment — don't conflate them:
 

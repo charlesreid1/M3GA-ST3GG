@@ -13,8 +13,8 @@ Both wrap the same underlying library (`m3gast3gg.core.*` — `img`, `text`, `an
 ### `stegg --json` — subprocess CLI
 Skill: `skills/stegg-cli/SKILL.md`. Invoke as `stegg --json <command>`. JSON output. **Prefer this for routine encode/decode/analyze** — output stays out of LLM context.
 
-### `m3gast3gg-mcp` — HTTP MCP server
-Skill: `skills/stegg-stego/SKILL.md`. Reference: `skills/stegg-stego/REFERENCE.md`. Package: `m3gast3gg.mcp` (server in `m3gast3gg.server`). Streamable HTTP on `:8765/mcp`; `m3gast3gg-mcp-stdio` for stdio transport. **Use this when you want to reason over results inline**, chain tools with LLM judgment between steps, or need the `stegg://field-guide` resource loaded.
+### `m3gast3gg-mcp` — MCP server (stdio / SSE / streamable-http)
+Skill: `skills/stegg-stego/SKILL.md`. Reference: `skills/stegg-stego/REFERENCE.md`. Package: `m3gast3gg.mcp` (server in `m3gast3gg.server`, built on `mcp.server.fastmcp.FastMCP`). One entry point, three transports via `--transport {stdio,sse,streamable-http}` (default: streamable-http on `:8765/mcp`; SSE on `:8765/sse`). `m3gast3gg-mcp-stdio` remains as an alias for `--transport stdio`. **Use this when you want to reason over results inline**, chain tools with LLM judgment between steps, or need the `stegg://field-guide` resource loaded.
 
 Rule of thumb: `stegg --json` for context hygiene, MCP for inline reasoning.
 

@@ -43,9 +43,17 @@ After install, these entry points are on `$PATH` inside the venv:
 ```
 stegg                # main CLI
 stegg-web            # NiceGUI web UI  (requires the [web] or [all] extra)
-m3gast3gg-mcp        # MCP server, HTTP transport
-m3gast3gg-mcp-stdio  # MCP server, stdio transport
+m3gast3gg-mcp        # MCP server; `--transport {stdio,sse,streamable-http}` (default: streamable-http)
+m3gast3gg-mcp-stdio  # alias for `m3gast3gg-mcp --transport stdio`
 ```
+
+`m3gast3gg-mcp` picks its transport from `--transport`:
+
+| Transport         | When to use                                                    | Example                                              |
+|-------------------|----------------------------------------------------------------|------------------------------------------------------|
+| `stdio`           | Local clients that spawn the server themselves (Claude Desktop, opencode) | `m3gast3gg-mcp --transport stdio`         |
+| `sse`             | Legacy MCP web transport (Server-Sent Events) at `/sse`         | `m3gast3gg-mcp --transport sse --port 8765`          |
+| `streamable-http` | Modern HTTP transport at `/mcp` (**default**)                   | `m3gast3gg-mcp` or `m3gast3gg-mcp --transport streamable-http` |
 
 Smoke test:
 
