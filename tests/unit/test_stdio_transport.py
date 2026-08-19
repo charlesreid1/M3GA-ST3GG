@@ -14,8 +14,8 @@ would), speak JSON-RPC 2.0 over its stdin/stdout, and assert:
   * every stdout line is valid JSON (no leaked prints or logs)
   * logger output lands on stderr, not stdout, even at --log-level info
 
-We drive the server via `python -m m3gast3gg.server --stdio` rather
-than the console script so tests don't require an editable install.
+We drive the server via `python -m m3gast3gg.server --transport stdio`
+rather than the console script so tests don't require an editable install.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import pytest
 from m3gast3gg.mcp import TOOL_EXECUTORS
 
 
-SPAWN_CMD_BASE = [sys.executable, "-m", "m3gast3gg.server", "--stdio"]
+SPAWN_CMD_BASE = [sys.executable, "-m", "m3gast3gg.server", "--transport", "stdio"]
 
 
 class StdioClient:
