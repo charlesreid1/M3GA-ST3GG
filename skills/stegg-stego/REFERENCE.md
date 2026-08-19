@@ -115,7 +115,7 @@ Notes:
 
 ## Knowledge base
 
-The **Knowledge (records + prose corpus)** family exposes the typed KR under `knowledge/records/*.json` and the prose corpus under `knowledge/<topic>/`. Every record carries a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` at startup — the server cannot boot with a bad record. Design notes and manifest: `knowledge/MANIFEST.md`, `knowledge/records/README.md`, and `plan-knowledge-base.md`.
+The **Knowledge (records + prose corpus)** family exposes the typed KR under `knowledge/records/*.json` and the prose corpus under `knowledge/<topic>/`. Every record carries a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict: empty `citations[]` or an unresolved bibliography id raises `RecordError` at startup — the server cannot boot with a bad record. Design notes and manifest: `knowledge/MANIFEST.md` and `knowledge/records/README.md`.
 
 Record categories (`knowledge/records/`):
 

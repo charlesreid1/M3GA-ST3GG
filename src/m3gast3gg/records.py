@@ -7,7 +7,7 @@ facts that back ST3GG's knowledge-retrieval tools (`stegg_lookup_technique`,
 Where the prose corpus is what the assistant *reads*, this is what it
 *looks facts up in*: numbers, not adjectives.
 
-Discipline (from `plan-knowledge-base.md`, ported from PHR34CKER5):
+Discipline:
   * every record is typed, dated (`era_bounds`), and family-bound;
   * `citations[]` is non-empty and resolves into `bibliography.json`;
   * disputes are carried in `disputed{}`, never silently resolved.

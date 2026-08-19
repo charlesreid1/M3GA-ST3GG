@@ -42,13 +42,13 @@ Rule: `AGENTS.md` owns repo layout + install + entry-point framing. `SKILL.md` o
 
 ## Knowledge base
 
-`knowledge/` — two-layer corpus modeled on PHR34CKER5's split. The wheel force-includes it as `m3gast3gg._knowledge/`, so the loader resolves the same tree in dev checkouts and installed packages.
+`knowledge/` — two-layer corpus split typed KR + prose. The wheel force-includes it as `m3gast3gg._knowledge/`, so the loader resolves the same tree in dev checkouts and installed packages.
 
 - `knowledge/records/*.json` — typed KR, one file per category: `bibliography`, `techniques`, `carrier_formats`, `layers`, `transports`, `survival`, `detectors`, `signatures`, `myths`, `capacity_models`, `external_tools`, `ctf_genres`. Every record has a mandatory envelope (`id`, `name`, `aliases`, `category`, `carrier_family`, `layer`, `era_bounds`, `confidence`, `citations`, `see_also`, `disputed`, `technical_body`). Load-time validation is strict — empty `citations[]` or an unresolved bibliography id raises `RecordError` and the MCP server won't boot. Loaded by `src/m3gast3gg/records.py`; served by `src/m3gast3gg/mcp/knowledge.py` as `stegg_lookup_technique` / `stegg_verify_survival` / `stegg_verify_claim` / `stegg_explain_pipeline` / `stegg_bibliography` / `stegg_cross_reference` / `stegg_search_records`.
 - `knowledge/<topic>/**/*.md` — prose corpus, one idea per file. Topic-level `README.md` orients; per-technique subdirectories (e.g. `image/lsb/`, `image/f5/`, `text/zero-width/`, `text/homoglyph-cyrillic/`) split into `README` / `reference` / `walkthrough` / `recognition` as the material demands. The MCP resource walker is depth-agnostic — every markdown file under `knowledge/<topic>/` is exposed at `stegg://<topic>/<name>` (where `<name>` may include subdirectory segments) and searchable via `stegg_list_topics` / `stegg_read_lore` / `stegg_search_lore`.
 - `knowledge/known-unknowns.md` — running audit of every claim ST3GG *acts on* that isn't yet tied to a primary source or a first-party measurement. Read before adding a thin-provenance record; add to it whenever you notice a claim in the field guide or KR that can't be cited.
 
-Design + discipline: `knowledge/MANIFEST.md`. Motivation and the tier-by-tier fill order: `plan-knowledge-base.md`.
+Design + discipline: `knowledge/MANIFEST.md`.
 
 ## Jailbreak / transforms
 
@@ -92,13 +92,12 @@ M3GA-ST3GG/
 │   └── slack/TRANSPORT_RESULTS_SLACK.json
 ├── scripts/                      # doc-generation helpers (render_skill_tool_index.py, render_transport_matrix.py — both CI-guarded)
 ├── skills/stegg-cli/, skills/stegg-stego/   # agent skill definitions
-├── docs/                         # long-form guides (standard.md, …)
+├── docs/                         # long-form guides (standard.md)
 ├── knowledge/                    # two-layer corpus (typed KR + prose); force-included into the wheel as `m3gast3gg._knowledge`
 ├── web/                          # browser Text Lab + F5 JPEG (legacy, frozen)
 │   └── index.html                # standalone; open directly, no server
 ├── pyproject.toml                # hatchling, src-layout
 ├── README.md, INSTALL.md, AGENTS.md, LICENSE
-├── plan-knowledge-base.md        # motivation + tiered fill plan for the KR
 ```
 
 ## Install

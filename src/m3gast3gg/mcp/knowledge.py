@@ -1,8 +1,7 @@
 """Knowledge-retrieval tools: typed records + prose corpus.
 
-The retrieval surface described in `plan-knowledge-base.md`, backed by
-the record store in `m3gast3gg.records` and the prose corpus under
-`knowledge/*/`. Names mirror PHR34CKER5 for cross-repo consistency:
+Backed by the record store in `m3gast3gg.records` and the prose corpus
+under `knowledge/*/`:
 
     stegg_lookup_technique      -> full technique record + envelope
     stegg_verify_survival       -> (technique, transport) status + evidence
