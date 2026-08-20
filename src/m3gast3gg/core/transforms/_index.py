@@ -15,6 +15,10 @@ from importlib import import_module
 
 # <!-- BEGIN autogen: transforms-index -->
 ALL_MODULES = (
+    "m3gast3gg.core.transforms.cipher.atbash",
+    "m3gast3gg.core.transforms.cipher.caesar",
+    "m3gast3gg.core.transforms.cipher.rot13",
+    "m3gast3gg.core.transforms.cipher.vigenere",
     "m3gast3gg.core.transforms.encoding.base32",
     "m3gast3gg.core.transforms.encoding.base64",
     "m3gast3gg.core.transforms.encoding.binary",
