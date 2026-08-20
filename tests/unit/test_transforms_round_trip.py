@@ -23,10 +23,11 @@ STANDARD_SAMPLES = [
 
 
 LOSSY_TRANSFORMS = {
-    # Zalgo's own reverse strips combining marks — round-trip is exact for
-    # inputs that contain no combining marks (all standard samples). Kept
-    # here to document the class; empty set for now.
-    "leetspeak",  # ASCII collision — 'l' and 'i' both round-trip to 'i'
+    # Leetspeak: ASCII collision — 'l' and 'i' both map to '1'.
+    "leetspeak",
+    # Morse: no case in the alphabet, punctuation subset; letters upper-case
+    # on decode, unmapped characters dropped. Standard for ITU Morse.
+    "morse",
 }
 
 
