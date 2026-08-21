@@ -15,7 +15,11 @@ from importlib import import_module
 
 # <!-- BEGIN autogen: transforms-index -->
 ALL_MODULES = (
+    "m3gast3gg.core.transforms.case.lowercase",
+    "m3gast3gg.core.transforms.case.titlecase",
+    "m3gast3gg.core.transforms.case.uppercase",
     "m3gast3gg.core.transforms.cipher.atbash",
+    "m3gast3gg.core.transforms.cipher.bacon",
     "m3gast3gg.core.transforms.cipher.caesar",
     "m3gast3gg.core.transforms.cipher.rot13",
     "m3gast3gg.core.transforms.cipher.vigenere",
@@ -24,6 +28,7 @@ ALL_MODULES = (
     "m3gast3gg.core.transforms.concealment.zero_width",
     "m3gast3gg.core.transforms.encoding.ascii85",
     "m3gast3gg.core.transforms.encoding.base32",
+    "m3gast3gg.core.transforms.encoding.base58",
     "m3gast3gg.core.transforms.encoding.base64",
     "m3gast3gg.core.transforms.encoding.binary",
     "m3gast3gg.core.transforms.encoding.hex",
@@ -31,6 +36,7 @@ ALL_MODULES = (
     "m3gast3gg.core.transforms.encoding.quoted_printable",
     "m3gast3gg.core.transforms.encoding.ternary",
     "m3gast3gg.core.transforms.encoding.url",
+    "m3gast3gg.core.transforms.format.remove_whitespace",
     "m3gast3gg.core.transforms.format.reverse",
     "m3gast3gg.core.transforms.unicode.fullwidth",
     "m3gast3gg.core.transforms.unicode.zalgo",

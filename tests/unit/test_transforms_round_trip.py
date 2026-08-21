@@ -28,6 +28,8 @@ LOSSY_TRANSFORMS = {
     # Morse: no case in the alphabet, punctuation subset; letters upper-case
     # on decode, unmapped characters dropped. Standard for ITU Morse.
     "morse",
+    # Bacon: 24-letter alphabet (I=J, U=V) + case-fold + non-letter drop.
+    "bacon",
 }
 
 
