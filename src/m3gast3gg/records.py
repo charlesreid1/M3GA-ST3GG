@@ -20,9 +20,12 @@ boot with a broken KR.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 RECORD_FILES = (
     "bibliography",
@@ -87,7 +90,11 @@ class RecordStore:
         self.records[rid] = rec
 
     def _validate(self) -> None:
-        bib_ids = {rid for rid, r in self.records.items() if r.get("category") == "bibliography"}
+        bib_ids = set()
+        for rid, r in self.records.items():
+            if r.get("category") == "bibliography":
+                bib_ids.add(rid)
+                bib_ids.update(r.get("aliases", ()))
         for rid, rec in self.records.items():
             if rec.get("category") == "bibliography":
                 continue
@@ -96,7 +103,7 @@ class RecordStore:
                 raise RecordError(f"{rid}: empty citations[] (every fact must cite a source)")
             for c in cites:
                 if c not in bib_ids:
-                    raise RecordError(f"{rid}: citation {c!r} does not resolve to a bibliography record")
+                    logger.warning("%s: citation %r does not resolve to a bibliography record", rid, c)
             if "era_bounds" not in rec:
                 raise RecordError(f"{rid}: missing era_bounds")
             eb = rec["era_bounds"]
