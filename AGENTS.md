@@ -58,14 +58,14 @@ Framing, consistent with the field guide: this tooling is for **CTFs, DEF CON ch
 
 ## Text transforms
 
-`m3gast3gg.core.transforms` is the registry of reversible **text transforms** — ciphers (caesar, rot13, atbash, vigenere), encodings (base64/32, hex, binary, ternary, ascii85, morse, url, quoted-printable), unicode reshaping (fullwidth, zalgo), concealment (homoglyph, invisible-text, zero-width), plus format/visual (reverse, leetspeak). 20 transforms across 6 categories; every entry is a `BaseTransformer` with `func` / `reverse` / `detector` / `configurable_options`. Distinct from text-*steg* (`m3gast3gg.core.text`) — transforms *reshape visibly*, steg *hides invisibly*. See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg).
+`m3gast3gg.core.transforms` is the registry of reversible **text transforms** — ciphers (caesar, rot13, atbash, vigenere, bacon), encodings (base64/32/58, hex, binary, ternary, ascii85, morse, url, quoted-printable), unicode reshaping (fullwidth, zalgo), concealment (homoglyph, invisible-text, zero-width), case (uppercase, lowercase, titlecase), plus format/visual (reverse, remove-whitespace, leetspeak). 26 transforms across 7 categories; every entry is a `BaseTransformer` with `func` / `reverse` / `detector` / `configurable_options`. Distinct from text-*steg* (`m3gast3gg.core.text`) — transforms *reshape visibly*, steg *hides invisibly*. See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg).
 
 Surface:
 
 - **Library** — `from m3gast3gg.core.transforms import registry, get`; `get("caesar").func(text, shift=5)`.
 - **Universal decoder** — `m3gast3gg.core.decoder.universal_decode(text)` walks every detector-firing transform and ranks candidates by priority + printability.
-- **CLI** — `stegg transform {list,inspect,encode,decode,auto-decode,categories}` under `--json` for agent use. Options grammar: repeatable `--option KEY=VALUE`.
-- **MCP** — `stegg_list_transforms`, `stegg_inspect_transform`, `stegg_encode_transform`, `stegg_decode_transform`, `stegg_auto_decode` in `src/m3gast3gg/mcp/transforms.py`. 1 MiB input cap. Merged into `TOOL_EXECUTORS` at `src/m3gast3gg/mcp/__init__.py`.
+- **CLI** — `stegg transform {list,inspect,encode,decode,chain,auto-decode,categories}` under `--json` for agent use. Options grammar: repeatable `--option KEY=VALUE`; `chain` takes repeatable `--step 'NAME [key=value ...]'` with an optional leading `decode:` prefix.
+- **MCP** — `stegg_list_transforms`, `stegg_inspect_transform`, `stegg_encode_transform`, `stegg_decode_transform`, `stegg_chain_transforms`, `stegg_auto_decode` in `src/m3gast3gg/mcp/transforms.py`. 1 MiB input cap. Merged into `TOOL_EXECUTORS` at `src/m3gast3gg/mcp/__init__.py`.
 
 Ciphers deliberately have `detector=None`: cipher output looks like plain letters, so auto-firing them would flood `stegg_auto_decode`. Users who *suspect* a cipher call `stegg transform decode NAME` directly.
 

@@ -263,13 +263,14 @@ Python, JavaScript, C, CSS, Shell, SQL, LaTeX — all with steganographic commen
 Distinct from text steganography: text transforms *reshape input visibly*
 (ROT13, Base64, homoglyph) instead of *hiding a payload invisibly* in a
 carrier. Useful for CTFs, jailbreak-obfuscation chains, and as pipeline
-stages upstream of steg. 20 registered transforms across 6 categories:
+stages upstream of steg. 26 registered transforms across 7 categories:
 
-- **cipher** (4): `caesar`, `rot13`, `atbash`, `vigenere` — classical ciphers, not encryption.
-- **encoding** (9): `base64`, `base32`, `hex`, `binary`, `ternary`, `ascii85`, `morse`, `url`, `quoted-printable`.
+- **cipher** (5): `caesar`, `rot13`, `atbash`, `vigenere`, `bacon` — classical ciphers, not encryption.
+- **encoding** (10): `base64`, `base32`, `base58`, `hex`, `binary`, `ternary`, `ascii85`, `morse`, `url`, `quoted-printable`.
 - **concealment** (3): `homoglyph`, `invisible-text` (Unicode Tag), `zero-width` (ZWJ/ZWSP/ZWNJ bridge to `core.text`).
 - **unicode** (2): `fullwidth`, `zalgo`.
-- **format** (1): `reverse`.
+- **case** (3): `uppercase`, `lowercase`, `titlecase`.
+- **format** (2): `reverse`, `remove-whitespace`.
 - **visual** (1): `leetspeak`.
 
 ```bash
@@ -277,11 +278,13 @@ stegg transform list                                # every transform, grouped
 stegg transform encode caesar --text "Attack" --option shift=5
 stegg transform decode base64 --text "SGVsbG8="
 stegg transform auto-decode --text "SGVsbG8sIFdvcmxkIQ=="   # universal decoder
+stegg transform chain --text "Attack" \
+    --step 'caesar shift=5' --step base64                   # ordered pipeline
 ```
 
 Same surface over MCP: `stegg_list_transforms`, `stegg_inspect_transform`,
-`stegg_encode_transform`, `stegg_decode_transform`, `stegg_auto_decode`.
-See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg)
+`stegg_encode_transform`, `stegg_decode_transform`, `stegg_chain_transforms`,
+`stegg_auto_decode`. See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg)
 for the transforms-vs-steg framing.
 
 > *⊰•-•✧ See the full catalog: [`examples/README.md`](examples/README.md) ✧•-•⊱*

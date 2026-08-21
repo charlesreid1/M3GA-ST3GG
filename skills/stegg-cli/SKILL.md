@@ -39,7 +39,7 @@ inject chunk | exif                   PNG text-chunk / EXIF metadata injection.
 inject filename | templates | show    Jailbreak filename generator + template catalog.
 inject compose | detect               Multi-vector jailbreak composer + detection sweep.
 inject zalgo | leet                   Text-transform helpers used by `inject compose`.
-transform list | inspect | encode | decode | auto-decode | categories
+transform list | inspect | encode | decode | chain | auto-decode | categories
                                       Reversible text transforms (ciphers, encodings, unicode, concealment).
 ```
 
@@ -160,6 +160,13 @@ stegg --json transform encode vigenere --text "ATTACK" --option key=LEMON
 # candidates by priority + printability. Ciphers deliberately opt out of
 # detection (they'd flood output), so pass them explicitly if suspected.
 echo "SGVsbG8sIFdvcmxkIQ==" | stegg --json transform auto-decode
+
+# Ordered pipeline — repeatable --step 'NAME [key=value ...]'. Prefix with
+# 'decode:' to run the reverse of that step. Steps run left-to-right.
+stegg --json transform chain --text "Attack" \
+    --step 'caesar shift=5' --step 'base64'
+stegg --json transform chain --text "Rnl5Zmhw" \
+    --step 'decode:base64' --step 'decode:caesar shift=5'
 
 # Category counts
 stegg --json transform categories

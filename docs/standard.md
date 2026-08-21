@@ -236,11 +236,13 @@ secret pair; none work on a bare string.
 into a different visible form. The output IS the transformed input; there
 is no cover, no secret, just a reversible mapping. Every transform is a
 `BaseTransformer` with `func(text, **options) -> str` and (usually)
-`reverse(text, **options) -> str`. Twenty transforms across six
-categories: ciphers (caesar, rot13, atbash, vigenere), encodings (base64/
-32, hex, binary, ternary, ascii85, morse, url, quoted-printable), unicode
-reshaping (fullwidth, zalgo), concealment bridges (homoglyph,
-invisible-text, zero-width), format (reverse), visual (leetspeak).
+`reverse(text, **options) -> str`. Twenty-six transforms across seven
+categories: ciphers (caesar, rot13, atbash, vigenere, bacon), encodings
+(base64/32/58, hex, binary, ternary, ascii85, morse, url,
+quoted-printable), unicode reshaping (fullwidth, zalgo), concealment
+bridges (homoglyph, invisible-text, zero-width), case (uppercase,
+lowercase, titlecase), format (reverse, remove-whitespace), visual
+(leetspeak).
 
 **Concealment transforms** are the bridge — they wrap steg primitives to
 fit the transform contract. `concealment/zero-width.py` takes a text

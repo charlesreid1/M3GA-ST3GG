@@ -85,6 +85,7 @@ Every tool takes JSON args and returns a JSON-serialized string. Image/text file
 | Tool | Description |
 | --- | --- |
 | `stegg_auto_decode` | Run the universal auto-decoder — try every detector-firing transform and return the top-K candidates ranked by priority and printability confidence. |
+| `stegg_chain_transforms` | Run an ordered pipeline of transforms over one input. |
 | `stegg_decode_transform` | Decode text through a transform's reverse. |
 | `stegg_encode_transform` | Encode text through one transform. |
 | `stegg_inspect_transform` | Return full metadata for one transform (name, slug, category, priority, description, configurable_options, capability flags). |
@@ -126,16 +127,16 @@ Notes:
 ## Text transforms (transform tools)
 
 Distinct from text steg — reversible reshaping of a bare string, no
-cover/secret. Registered in `m3gast3gg.core.transforms`; 20 transforms
-across 6 categories. Every transform carries a name, slug, category,
+cover/secret. Registered in `m3gast3gg.core.transforms`; 26 transforms
+across 7 categories. Every transform carries a name, slug, category,
 priority (0–310), `func` (encode), `reverse` (decode when
 `can_decode=True`), optional `detector`, and typed
 `configurable_options`.
 
 | Slug | Category | Priority | Options |
 | --- | --- | --- | --- |
-| `atbash`, `caesar`, `rot13`, `vigenere` | cipher | 60 | `caesar.shift` (int 1–25, default 3); `vigenere.key` (text, default `SECRET`) |
-| `base64`, `base32` | encoding | 270, 280 | — |
+| `atbash`, `caesar`, `rot13`, `vigenere`, `bacon` | cipher | 60 | `caesar.shift` (int 1–25, default 3); `vigenere.key` (text, default `SECRET`); `bacon` is lossy (24-letter alphabet, case-fold) |
+| `base64`, `base58`, `base32` | encoding | 270, 270, 280 | — |
 | `hex` | encoding | 290 | — |
 | `binary` | encoding | 300 | — |
 | `ternary`, `ascii85`, `url`, `quoted-printable` | encoding | 70 | — |
@@ -143,7 +144,8 @@ priority (0–310), `func` (encode), `reverse` (decode when
 | `fullwidth`, `zalgo` | unicode | 85 | `zalgo.intensity` (int 1–10, default 3) |
 | `homoglyph` | concealment | 100 | — |
 | `invisible-text`, `zero-width` | concealment | 1 | `zero-width.cover` (text, default `"carrier text"`) |
-| `reverse` | format | 50 | — |
+| `uppercase`, `lowercase`, `titlecase` | case | 50 | — (pipeline-stage utility; case-fold is lossy) |
+| `reverse`, `remove-whitespace` | format | 50 | — (`remove-whitespace` is lossy) |
 | `leetspeak` | visual | 50 | `leetspeak.intensity` (int 1–3, default 2) |
 
 **Priority zones** (`stegg_auto_decode` ranks by priority DESC, then
