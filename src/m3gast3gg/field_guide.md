@@ -176,6 +176,18 @@ Text-steg encode/decode tools take a `cover_text` (inline) OR `cover_path`. Pref
 
 Per-method framing and capacity formulas live in `techniques.json` — `stegg_lookup_technique` returns the record.
 
+### Text-transform dispatch — reshape a bare string
+
+Distinct surface from text-*steg*. Transforms reshape an input string into another visible string (ROT13, Base64, homoglyph, fullwidth, ...) — no cover, no secret. Fast path when the user hands you a mystery encoded string or asks you to run a reversible transformation.
+
+- **User pasted a mystery string and wants to know what encoding it is** → `stegg_auto_decode` with the string verbatim. Universal decoder: walks every detector-firing transform, ranks candidates by priority + printability. Top-1 usually names the encoding (Base64, Hex, Morse, ...).
+- **User asks "is this base64?" / "decode this hex" / "unfold this URL-encoding"** → `stegg_decode_transform(name, text)` with the named transform. One-shot, no guessing.
+- **User asks to "encode as base64", "cipher with a shift of 5", "vigenère with key LEMON", "make it fullwidth", "leetspeak this"** → `stegg_encode_transform(name, text, options)`. Options passed as a JSON object keyed by the transform's declared option ids.
+- **User wants to see the transform catalog** → `stegg_list_transforms` (optionally `category="cipher"` etc). 20 transforms across 6 categories.
+- **User suspects a cipher (ROT13, Caesar, Vigenère, Atbash)** → ciphers have `detector=None` on purpose (they look like plain letters). `stegg_auto_decode` won't surface them; pass them by name to `stegg_decode_transform`. For unknown Caesar shift, try `--option shift=N` across 1..25.
+
+Framing separation is in `docs/standard.md#transforms-vs-steg`. When the user's task ends in a stego wrap, use transforms as pipeline stages upstream of `stegg_text_encode` / `stegg_jailbreak_compose_text`; don't try to make one API do both.
+
 ### Interpreting image triage verdicts
 
 Triage's verdict labels are `SUSPICIOUS`, `INCONCLUSIVE`, and `CLEAN`. These are signal-report labels, not your response verdict. Translate them:

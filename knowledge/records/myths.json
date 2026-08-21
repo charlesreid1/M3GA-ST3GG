@@ -362,6 +362,63 @@
     }
   },
   {
+    "id": "myth-rot13-encryption",
+    "name": "\"ROT13 is encryption\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1980-01-01", null],
+    "confidence": "primary",
+    "aliases": ["rot13-crypto-myth"],
+    "citations": ["kessler-primer", "st3gg-repo-readme"],
+    "see_also": ["myth-base64-encryption", "myth-vigenere-unbreakable"],
+    "technical_body": {
+      "claim": "ROT13 hides data from an adversary the way encryption does",
+      "match_patterns": ["rot.?13", "(encrypt|secure|hidden|scramble|obfuscat)"],
+      "verdict": "false",
+      "correct_form": "ROT13 is a keyless Caesar cipher with a shift of 13, and is involutive (rot13(rot13(x)) == x). It has no key and no keyspace — anyone who recognizes the alphabet decodes instantly. Its historical purpose (Usenet spoiler shields, punchline hiding) is 'obvious once you look'; it stops the *casual* reader, not any adversary. Treat it as obfuscation for readability, not for secrecy. `stegg transform decode rot13` runs the reverse in one call.",
+      "common_source": "confusing 'not human-readable at first glance' with 'cryptographically secure'"
+    }
+  },
+  {
+    "id": "myth-base64-encryption",
+    "name": "\"Base64 hides / encrypts data\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1996-01-01", null],
+    "confidence": "primary",
+    "aliases": ["base64-crypto-myth"],
+    "citations": ["kessler-primer", "st3gg-repo-readme"],
+    "see_also": ["myth-rot13-encryption", "myth-vigenere-unbreakable"],
+    "technical_body": {
+      "claim": "Base64-encoding a secret hides it from an adversary",
+      "match_patterns": ["base.?64", "(encrypt|secure|hide|hidden|conceal|scramble|obfuscat)"],
+      "verdict": "false",
+      "correct_form": "Base64 is a binary-to-text ENCODING (RFC 4648) — a keyless, deterministic mapping of arbitrary bytes onto 64 printable ASCII characters. Every language has a one-line decoder; `base64 -d`, `atob(...)`, `base64.b64decode(...)`, `stegg transform decode base64 --text ...` all reverse it instantly. Base64 in a JWT/API token is transport encoding, not confidentiality. If you need secrecy, encrypt first (AES-GCM), then encode the ciphertext.",
+      "common_source": "the =-padded output *looks* scrambled to a human eye and gets called 'encoded' in security-adjacent contexts"
+    }
+  },
+  {
+    "id": "myth-vigenere-unbreakable",
+    "name": "\"Vigenère is unbreakable / le chiffre indéchiffrable\"",
+    "category": "myth",
+    "carrier_family": "text",
+    "layer": "character",
+    "era_bounds": ["1553-01-01", null],
+    "confidence": "primary",
+    "aliases": ["vigenere-indechiffrable-myth"],
+    "citations": ["kessler-primer", "st3gg-repo-readme"],
+    "see_also": ["myth-rot13-encryption", "myth-base64-encryption"],
+    "technical_body": {
+      "claim": "Vigenère is unbreakable without the key",
+      "match_patterns": ["vigen[eè]re", "(unbreak|indechiffrab|indecipherable|secure|impregnab)"],
+      "verdict": "false",
+      "correct_form": "Vigenère was called 'le chiffre indéchiffrable' for two centuries because it was polyalphabetic — the same plaintext letter enciphered differently in different positions. Kasiski's method (1863) recovers the key length by measuring repetitions in the ciphertext; Friedman's Index of Coincidence (1922) refined it. With a short key against a long ciphertext, the key is recoverable in seconds. Vigenère provides zero confidentiality against a competent analyst. Use it for CTFs, historical demos, and pre-obfuscation of jailbreak payloads (`stegg transform encode vigenere --option key=...`), not for security.",
+      "common_source": "the 19th-century marketing outlived the 19th-century cryptanalysis"
+    }
+  },
+  {
     "id": "myth-github-strips-exif",
     "name": "\"GitHub uploads strip EXIF metadata\"",
     "category": "myth",
