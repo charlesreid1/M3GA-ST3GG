@@ -34,7 +34,7 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from m3gast3gg.mcp import image, jailbreak, knowledge, meta, network, text, triage  # noqa: E402
+from m3gast3gg.mcp import image, jailbreak, knowledge, meta, network, text, transforms, triage  # noqa: E402
 
 BEGIN_FENCE = "<!-- BEGIN autogen: tool index -->"
 END_FENCE = "<!-- END autogen: tool index -->"
@@ -44,7 +44,8 @@ FAMILIES: list[tuple[str, str, object]] = [
     ("image", "Image", image),
     ("text", "Text / emoji", text),
     ("network", "Network", network),
-    ("jailbreak", "Jailbreak / transforms", jailbreak),
+    ("jailbreak", "Jailbreak / composers", jailbreak),
+    ("transforms", "Text transforms", transforms),
     ("knowledge", "Knowledge (records + prose corpus)", knowledge),
     ("meta", "Meta / capabilities", meta),
 ]

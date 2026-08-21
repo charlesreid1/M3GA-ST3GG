@@ -2131,6 +2131,347 @@ def specter_decode_cmd(
         console.print(f"\n{FOOTER}")
 
 
+# ============== 🔤 TEXT TRANSFORMS ==============
+
+transform_app = typer.Typer(help="🔤 Text transforms: encode/decode/auto-detect (ciphers, encodings, concealment)")
+app.add_typer(transform_app, name="transform")
+
+
+def _parse_options(raw: List[str], t) -> dict:
+    """Parse repeatable --option KEY=VALUE args into a kwargs dict.
+
+    KEY must match one of ``t.configurable_options[*].id``. VALUE is decoded
+    per the option's declared type (boolean/number/select/text). Unknown or
+    malformed inputs exit 2.
+    """
+    from m3gast3gg.core.transforms.base import ConfigurableOption
+    by_id = {o.id: o for o in t.configurable_options}
+    out: dict = {}
+    for entry in raw:
+        if "=" not in entry:
+            error(f"--option {entry!r}: expected KEY=VALUE")
+            raise typer.Exit(2)
+        key, _, value = entry.partition("=")
+        opt = by_id.get(key)
+        if opt is None:
+            valid = ", ".join(sorted(by_id)) or "(none)"
+            error(f"unknown option {key!r} for {t.name!r}; valid: {valid}")
+            raise typer.Exit(2)
+        if opt.type == "boolean":
+            v = value.strip().lower()
+            if v in ("true", "1", "yes"):
+                out[key] = True
+            elif v in ("false", "0", "no"):
+                out[key] = False
+            else:
+                error(f"--option {key}={value}: expected boolean (true/false/1/0/yes/no)")
+                raise typer.Exit(2)
+        elif opt.type == "number":
+            try:
+                if opt.step and float(opt.step).is_integer() and \
+                   isinstance(opt.min, (int, type(None))) and isinstance(opt.max, (int, type(None))):
+                    out[key] = int(value)
+                else:
+                    out[key] = float(value)
+            except ValueError:
+                error(f"--option {key}={value}: not a valid number")
+                raise typer.Exit(2)
+            if opt.min is not None and out[key] < opt.min:
+                error(f"--option {key}={value}: below min {opt.min}")
+                raise typer.Exit(2)
+            if opt.max is not None and out[key] > opt.max:
+                error(f"--option {key}={value}: above max {opt.max}")
+                raise typer.Exit(2)
+        elif opt.type == "select":
+            if opt.options and value not in [str(o) for o in opt.options]:
+                error(f"--option {key}={value}: not in {opt.options}")
+                raise typer.Exit(2)
+            out[key] = value
+        else:
+            out[key] = value
+    return out
+
+
+def _read_text_arg(text: Optional[str]) -> str:
+    """Read --text or stdin (when stdin is not a TTY). Exit 2 if both supplied."""
+    stdin_data = None
+    if not sys.stdin.isatty():
+        stdin_data = sys.stdin.read()
+    if text is not None and stdin_data:
+        error("both --text and stdin were provided; pick one")
+        raise typer.Exit(2)
+    if text is not None:
+        return text
+    if stdin_data is not None:
+        return stdin_data
+    error("no input: pass --text or pipe stdin")
+    raise typer.Exit(2)
+
+
+def _serialize_transform(t) -> dict:
+    return {
+        "name": t.name,
+        "slug": t.slug,
+        "category": t.category,
+        "priority": t.priority,
+        "description": t.description,
+        "can_decode": t.can_decode,
+        "input_kind": t.input_kind,
+        "has_detector": t.detector is not None,
+        "has_reverse": t.reverse is not None,
+        "has_map": t.map is not None,
+        "configurable_options": [
+            {"id": o.id, "label": o.label, "type": o.type,
+             "default": o.default, "options": o.options,
+             "min": o.min, "max": o.max, "step": o.step}
+            for o in t.configurable_options
+        ],
+    }
+
+
+@transform_app.command("list")
+def transform_list_cmd(
+    ctx: typer.Context,
+    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter to one category"),
+):
+    """List every registered text transform."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    items = registry.by_category(category) if category else registry.all()
+    payload = {
+        "transforms": [
+            {"slug": t.slug, "name": t.name, "category": t.category,
+             "priority": t.priority, "can_decode": t.can_decode,
+             "has_detector": t.detector is not None}
+            for t in items
+        ],
+        "count": len(items),
+    }
+    if json_mode:
+        _out_json(payload)
+    table = Table(show_header=True, box=box.SIMPLE, header_style="cyan")
+    table.add_column("slug")
+    table.add_column("name")
+    table.add_column("category")
+    table.add_column("prio", justify="right")
+    table.add_column("dec?", justify="center")
+    for t in items:
+        table.add_row(t.slug, t.name, t.category, str(t.priority),
+                      "yes" if t.can_decode else "no")
+    console.print(table)
+
+
+@transform_app.command("inspect")
+def transform_inspect_cmd(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Transform slug or human name"),
+):
+    """Show full metadata for one transform."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    t = registry.get_optional(name)
+    if t is None:
+        error(f"no transform registered as {name!r}")
+        raise typer.Exit(2)
+    payload = _serialize_transform(t)
+    if json_mode:
+        _out_json(payload)
+    console.print(Panel(json.dumps(payload, indent=2, ensure_ascii=False),
+                        title=f"[cyan]{t.name}[/cyan]", border_style="cyan"))
+
+
+@transform_app.command("encode")
+def transform_encode_cmd(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Transform slug or human name"),
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Input text (or pipe stdin)"),
+    option: List[str] = typer.Option([], "--option", help="KEY=VALUE per transform option (repeatable)"),
+):
+    """Encode text through a transform. Options via repeatable --option KEY=VALUE."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    t = registry.get_optional(name)
+    if t is None:
+        error(f"no transform registered as {name!r}")
+        raise typer.Exit(2)
+    input_text = _read_text_arg(text)
+    kwargs = _parse_options(option, t)
+    try:
+        output = t.func(input_text, **kwargs)
+    except Exception as exc:
+        error(f"{t.name} encode failed: {exc}")
+        raise typer.Exit(1)
+    if json_mode:
+        _out_json({"transform": t.slug, "options": kwargs, "output": output})
+    sys.stdout.write(output)
+    if not output.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+@transform_app.command("decode")
+def transform_decode_cmd(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Transform slug or human name"),
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Input text (or pipe stdin)"),
+    option: List[str] = typer.Option([], "--option", help="KEY=VALUE per transform option (repeatable)"),
+):
+    """Decode text through a transform's reverse."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    t = registry.get_optional(name)
+    if t is None:
+        error(f"no transform registered as {name!r}")
+        raise typer.Exit(2)
+    if t.reverse is None:
+        error(f"{t.name} has can_decode=False; nothing to reverse")
+        raise typer.Exit(2)
+    input_text = _read_text_arg(text)
+    kwargs = _parse_options(option, t)
+    try:
+        output = t.reverse(input_text, **kwargs)
+    except Exception as exc:
+        error(f"{t.name} decode failed: {exc}")
+        raise typer.Exit(1)
+    if json_mode:
+        _out_json({"transform": t.slug, "options": kwargs, "output": output})
+    sys.stdout.write(output)
+    if not output.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+@transform_app.command("auto-decode")
+def transform_auto_decode_cmd(
+    ctx: typer.Context,
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Input text (or pipe stdin)"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Maximum candidates to return"),
+    all_candidates: bool = typer.Option(False, "--all", help="Include low-confidence candidates in table output"),
+):
+    """Run the universal decoder — detector-gated auto-decode across every transform."""
+    from m3gast3gg.core.decoder import universal_decode
+    json_mode = ctx.obj.get("json_mode", False)
+    input_text = _read_text_arg(text)
+    candidates = universal_decode(input_text, top_k=top_k, include_low_confidence=True)
+    if json_mode:
+        _out_json({
+            "input_length": len(input_text),
+            "candidates": [c.to_dict() for c in candidates],
+        })
+    shown = candidates if all_candidates else [c for c in candidates if not c.low_confidence]
+    if not shown:
+        console.print("[yellow]no candidates[/yellow]")
+        return
+    table = Table(show_header=True, box=box.SIMPLE, header_style="cyan")
+    table.add_column("method")
+    table.add_column("prio", justify="right")
+    table.add_column("conf", justify="right")
+    table.add_column("text (truncated)")
+    for c in shown:
+        preview = c.text if len(c.text) <= 80 else c.text[:77] + "..."
+        table.add_row(c.method, str(c.priority), f"{c.confidence:.2f}", preview)
+    console.print(table)
+
+
+def _parse_step(raw: str) -> tuple[str, str, List[str]]:
+    """Parse one --step token.
+
+    Grammar: ``[decode:]NAME [KEY=VALUE ...]``. Whitespace-separated. Missing
+    NAME or malformed KEY=VALUE exits 2.
+    """
+    tokens = raw.split()
+    if not tokens:
+        error("--step: empty step")
+        raise typer.Exit(2)
+    head = tokens[0]
+    action = "encode"
+    if head.startswith("decode:"):
+        action = "decode"
+        head = head[len("decode:"):]
+    elif head.startswith("encode:"):
+        head = head[len("encode:"):]
+    if not head:
+        error(f"--step {raw!r}: missing transform name")
+        raise typer.Exit(2)
+    for kv in tokens[1:]:
+        if "=" not in kv:
+            error(f"--step {raw!r}: option {kv!r} must be KEY=VALUE")
+            raise typer.Exit(2)
+    return head, action, tokens[1:]
+
+
+@transform_app.command("chain")
+def transform_chain_cmd(
+    ctx: typer.Context,
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Input text (or pipe stdin)"),
+    step: List[str] = typer.Option(
+        [],
+        "--step",
+        help="Pipeline step 'NAME [KEY=VALUE ...]', optionally prefixed 'decode:'. Repeatable.",
+    ),
+):
+    """Run an ordered pipeline of transforms. Each --step is 'NAME [key=value ...]';
+    prefix with 'decode:' to run the reverse. Steps run left-to-right."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    if not step:
+        error("--step: at least one step required")
+        raise typer.Exit(2)
+    input_text = _read_text_arg(text)
+    current = input_text
+    trace: list[dict] = []
+    for i, raw in enumerate(step):
+        name, action, kvs = _parse_step(raw)
+        t = registry.get_optional(name)
+        if t is None:
+            error(f"step[{i}]: no transform registered as {name!r}")
+            raise typer.Exit(2)
+        if action == "decode" and t.reverse is None:
+            error(f"step[{i}]: {t.name} has can_decode=False; nothing to reverse")
+            raise typer.Exit(2)
+        kwargs = _parse_options(kvs, t)
+        fn = t.func if action == "encode" else t.reverse
+        try:
+            current = fn(current, **kwargs)
+        except Exception as exc:
+            error(f"step[{i}] {t.name} {action} failed: {exc}")
+            raise typer.Exit(1)
+        trace.append({
+            "index": i,
+            "transform": t.slug,
+            "action": action,
+            "options": kwargs,
+            "output_length": len(current),
+        })
+    if json_mode:
+        _out_json({
+            "input_length": len(input_text),
+            "output": current,
+            "output_length": len(current),
+            "steps": trace,
+        })
+    sys.stdout.write(current)
+    if not current.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+@transform_app.command("categories")
+def transform_categories_cmd(ctx: typer.Context):
+    """List transform categories with counts."""
+    from m3gast3gg.core.transforms import registry
+    from m3gast3gg.core.transforms.base import VALID_CATEGORIES
+    json_mode = ctx.obj.get("json_mode", False)
+    counts = {c: len(registry.by_category(c)) for c in sorted(VALID_CATEGORIES)}
+    counts = {k: v for k, v in counts.items() if v > 0}
+    if json_mode:
+        _out_json({"categories": counts, "total": sum(counts.values())})
+    table = Table(show_header=True, box=box.SIMPLE, header_style="cyan")
+    table.add_column("category")
+    table.add_column("count", justify="right")
+    for cat, n in counts.items():
+        table.add_row(cat, str(n))
+    table.add_row("[bold]total[/bold]", f"[bold]{sum(counts.values())}[/bold]")
+    console.print(table)
+
+
 # Entry point
 def main_cli():
     """Main entry point"""

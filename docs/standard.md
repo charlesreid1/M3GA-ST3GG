@@ -23,7 +23,8 @@ Domain-specific stego modules live under `m3gast3gg.core`:
 ```
 m3gast3gg/core/img.py        core/audio.py       core/text.py
 m3gast3gg/core/network.py    core/pdf.py         core/metadata.py
-m3gast3gg/core/jailbreak.py  core/transforms.py  core/matryoshka.py
+m3gast3gg/core/jailbreak.py  core/transforms/    core/matryoshka.py
+m3gast3gg/core/decoder.py
 ```
 
 Shared primitives that don't own a domain use descriptive names:
@@ -213,3 +214,57 @@ except ImportError as exc:
 ```
 
 The base `stegg` install stays "just Pillow + numpy + scapy + rich + typer."
+
+<a id="transforms-vs-steg"></a>
+## Text transforms vs text steganography
+
+ST3GG carries two related-but-distinct text surfaces. They share the same
+Unicode primitives (`m3gast3gg.core.unicode_tags`, `m3gast3gg.core.crypto`)
+but do different jobs — pick the right one for the task or you'll fight
+the API.
+
+**Text steganography (`m3gast3gg.core.text`)** — hide a *secret* inside a
+*cover*, so a reader sees only the cover. The output looks like the cover
+did, plus a hidden payload nobody else notices. Every method has an
+`encode(cover, secret) -> str` and `decode(stego) -> str`. Fourteen
+methods: zero-width, cyrillic-homoglyph, cjk-homoglyph, whitespace,
+invisible-ink, variation, combining, confusable, directional, hangul,
+mathbold, braille, emoji, skintone, capitalization. All take a cover +
+secret pair; none work on a bare string.
+
+**Text transforms (`m3gast3gg.core.transforms`)** — reshape the *input*
+into a different visible form. The output IS the transformed input; there
+is no cover, no secret, just a reversible mapping. Every transform is a
+`BaseTransformer` with `func(text, **options) -> str` and (usually)
+`reverse(text, **options) -> str`. Twenty-six transforms across seven
+categories: ciphers (caesar, rot13, atbash, vigenere, bacon), encodings
+(base64/32/58, hex, binary, ternary, ascii85, morse, url,
+quoted-printable), unicode reshaping (fullwidth, zalgo), concealment
+bridges (homoglyph, invisible-text, zero-width), case (uppercase,
+lowercase, titlecase), format (reverse, remove-whitespace), visual
+(leetspeak).
+
+**Concealment transforms** are the bridge — they wrap steg primitives to
+fit the transform contract. `concealment/zero-width.py` takes a text
+input and *self-embeds* it in a default cover, so it looks like a
+one-arg transform to callers even though the underlying primitive is a
+two-arg steg encoder. This is a deliberate ergonomic choice: pipeline
+callers (`stegg transform chain`, jailbreak composers) want `f(x) ->
+y`, not `f(cover, x) -> y`.
+
+**When to use which:**
+
+- Hiding *this* string inside *that* cover article? → text steg.
+- Reshape *this* string into a different visible form (ROT13, Base64,
+  fullwidth, ...)? → text transform.
+- Building a jailbreak-obfuscation pipeline that ends in a stego
+  wrapper? → transforms in the middle, steg at the end.
+- "Which encoding is this mystery string?" → `stegg transform
+  auto-decode` (`m3gast3gg.core.decoder.universal_decode`) runs the
+  detector-gated auto-decoder over the transform registry.
+
+Both surfaces are stable ABI. Neither will "grow into" the other —
+they're kept apart because their function signatures don't align, and
+merging them would either force covers on transforms (ugly) or drop
+covers from steg (silently wrong).
+

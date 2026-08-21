@@ -56,6 +56,19 @@ Design + discipline: `knowledge/MANIFEST.md`.
 
 Framing, consistent with the field guide: this tooling is for **CTFs, DEF CON challenges, hardware badges, authorized red-team ops, detection-tuning, and forensic research**. The composers exist because those particular pipelines (obfuscation chain + text stego + optional image wrap) are common enough to standardize; the detectors exist so blue teams can see them. Skills that describe these tools should carry the same framing sentence rather than inventing new phrasing.
 
+## Text transforms
+
+`m3gast3gg.core.transforms` is the registry of reversible **text transforms** — ciphers (caesar, rot13, atbash, vigenere, bacon), encodings (base64/32/58, hex, binary, ternary, ascii85, morse, url, quoted-printable), unicode reshaping (fullwidth, zalgo), concealment (homoglyph, invisible-text, zero-width), case (uppercase, lowercase, titlecase), plus format/visual (reverse, remove-whitespace, leetspeak). 26 transforms across 7 categories; every entry is a `BaseTransformer` with `func` / `reverse` / `detector` / `configurable_options`. Distinct from text-*steg* (`m3gast3gg.core.text`) — transforms *reshape visibly*, steg *hides invisibly*. See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg).
+
+Surface:
+
+- **Library** — `from m3gast3gg.core.transforms import registry, get`; `get("caesar").func(text, shift=5)`.
+- **Universal decoder** — `m3gast3gg.core.decoder.universal_decode(text)` walks every detector-firing transform and ranks candidates by priority + printability.
+- **CLI** — `stegg transform {list,inspect,encode,decode,chain,auto-decode,categories}` under `--json` for agent use. Options grammar: repeatable `--option KEY=VALUE`; `chain` takes repeatable `--step 'NAME [key=value ...]'` with an optional leading `decode:` prefix.
+- **MCP** — `stegg_list_transforms`, `stegg_inspect_transform`, `stegg_encode_transform`, `stegg_decode_transform`, `stegg_chain_transforms`, `stegg_auto_decode` in `src/m3gast3gg/mcp/transforms.py`. 1 MiB input cap. Merged into `TOOL_EXECUTORS` at `src/m3gast3gg/mcp/__init__.py`.
+
+Ciphers deliberately have `detector=None`: cipher output looks like plain letters, so auto-firing them would flood `stegg_auto_decode`. Users who *suspect* a cipher call `stegg transform decode NAME` directly.
+
 ## Repo layout
 
 Src-layout single package `m3gast3gg` under `src/`. The core steganography library and the MCP server ship together in one wheel.
@@ -75,7 +88,17 @@ M3GA-ST3GG/
 │   │   ├── text.py               # text/emoji encode/decode (14 methods)
 │   │   ├── audio.py, network.py, pdf.py, metadata.py, matryoshka.py, …
 │   │   ├── analysis.py           # 264+ detection/analysis functions
-│   │   ├── transforms.py         # pure text transforms (zalgo, leetspeak, fullwidth)
+│   │   ├── transforms/           # text transforms package — BaseTransformer registry
+│   │   │   ├── base.py           #   dataclass + ConfigurableOption + validation
+│   │   │   ├── registry.py       #   flat lookup by slug/name
+│   │   │   ├── _index.py         #   autogen list of transform modules
+│   │   │   ├── cipher/           #   caesar, rot13, atbash, vigenere
+│   │   │   ├── encoding/         #   base64/32, hex, binary, ternary, ascii85, morse, url, quoted-printable
+│   │   │   ├── concealment/      #   homoglyph, invisible-text, zero-width
+│   │   │   ├── unicode/          #   fullwidth, zalgo
+│   │   │   ├── format/reverse.py
+│   │   │   └── visual/leetspeak.py
+│   │   ├── decoder.py            # universal auto-decoder over the transforms registry
 │   │   ├── jailbreak.py          # multi-vector prompt-injection composer + detectors
 │   │   ├── crypto.py             # optional AES-256-GCM
 │   │   ├── operations.py         # shared operation layer (file I/O + validation)

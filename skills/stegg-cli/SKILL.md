@@ -1,6 +1,6 @@
 ---
 name: stegg-cli
-description: "Subprocess CLI for ST3GG steganography. Covers image LSB encode/decode + steganalysis + PNG chunk/EXIF injection, DCT + F5 (JPEG-survivable), text/emoji encode/decode (14 methods), Matryoshka nested-image steg, SPECTER channel-cipher steg, and jailbreak / prompt-injection composers + detectors. All output is JSON — invoke as `stegg --json <command>` so results stay out of LLM context. Use when running many operations, encoding/decoding routine payloads, or emitting artifacts for later inspection. For inline reasoning over results (verdicts, triage, chained decisions between steps) use `stegg-stego` (MCP) instead. Triggers on stegg, steganography, steg, LSB, DCT, F5, hide data, hidden data, steganalysis, PNG chunk, EXIF injection, matryoshka, SPECTER, jailbreak, prompt injection."
+description: "Subprocess CLI for ST3GG steganography. Covers image LSB encode/decode + steganalysis + PNG chunk/EXIF injection, DCT + F5 (JPEG-survivable), text/emoji encode/decode (14 methods), Matryoshka nested-image steg, SPECTER channel-cipher steg, jailbreak / prompt-injection composers + detectors, and text transforms (ROT13, Caesar, Vigenère, Base64, hex, morse, homoglyph, fullwidth, zalgo, ...) with a universal auto-decoder. All output is JSON — invoke as `stegg --json <command>` so results stay out of LLM context. Use when running many operations, encoding/decoding routine payloads, or emitting artifacts for later inspection. For inline reasoning over results (verdicts, triage, chained decisions between steps) use `stegg-stego` (MCP) instead. Triggers on stegg, steganography, steg, LSB, DCT, F5, hide data, hidden data, steganalysis, PNG chunk, EXIF injection, matryoshka, SPECTER, jailbreak, prompt injection, caesar, rot13, vigenere, base64, hex, morse, homoglyph, fullwidth, zalgo, auto-decode, universal decoder, text transform."
 ---
 
 # ST3GG CLI
@@ -39,6 +39,8 @@ inject chunk | exif                   PNG text-chunk / EXIF metadata injection.
 inject filename | templates | show    Jailbreak filename generator + template catalog.
 inject compose | detect               Multi-vector jailbreak composer + detection sweep.
 inject zalgo | leet                   Text-transform helpers used by `inject compose`.
+transform list | inspect | encode | decode | chain | auto-decode | categories
+                                      Reversible text transforms (ciphers, encodings, unicode, concealment).
 ```
 
 Not in the CLI: network / PCAP steg and image PVD live only in the MCP tool surface (`stegg-stego`). If you need those, use MCP.
@@ -132,6 +134,47 @@ stegg --json inject compose --template <name> -i carrier.png -o out.png
 # Blue-team side: detection sweep across all vectors
 stegg --json inject detect -i suspect.png --full
 ```
+
+### Text transforms (ciphers, encodings, universal decoder)
+
+Reversible reshaping of a *bare* string — no cover, no secret, just a
+mapping. Distinct from text steg (`stegg text encode`), which hides a
+secret in a cover. See `AGENTS.md#text-transforms` and
+`docs/standard.md#transforms-vs-steg`.
+
+```bash
+# List every registered transform, grouped by category
+stegg --json transform list
+stegg --json transform list --category cipher
+
+# Metadata for one transform (options, priorities, capability flags)
+stegg --json transform inspect caesar
+
+# Encode / decode with options
+stegg --json transform encode caesar --text "Attack at dawn" --option shift=5
+stegg --json transform decode caesar --text "Fyyfhp fy ifbs" --option shift=5
+stegg --json transform decode base64 --text "SGVsbG8sIFdvcmxkIQ=="
+stegg --json transform encode vigenere --text "ATTACK" --option key=LEMON
+
+# Universal auto-decoder — walks every detector-firing transform, ranks
+# candidates by priority + printability. Ciphers deliberately opt out of
+# detection (they'd flood output), so pass them explicitly if suspected.
+echo "SGVsbG8sIFdvcmxkIQ==" | stegg --json transform auto-decode
+
+# Ordered pipeline — repeatable --step 'NAME [key=value ...]'. Prefix with
+# 'decode:' to run the reverse of that step. Steps run left-to-right.
+stegg --json transform chain --text "Attack" \
+    --step 'caesar shift=5' --step 'base64'
+stegg --json transform chain --text "Rnl5Zmhw" \
+    --step 'decode:base64' --step 'decode:caesar shift=5'
+
+# Category counts
+stegg --json transform categories
+```
+
+Options grammar: repeatable `--option KEY=VALUE`. Boolean / number /
+select / text values are type-checked against each option's declaration;
+unknown or out-of-range values exit 2 with the valid set.
 
 ## Key Constraints
 
