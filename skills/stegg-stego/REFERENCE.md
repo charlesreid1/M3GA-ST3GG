@@ -69,7 +69,7 @@ Every tool takes JSON args and returns a JSON-serialized string. Image/text file
 | `stegg_network_encode` | Encode a payload into a PCAP file using network steganography. |
 | `stegg_network_methods` | List all available network stego methods, their bytes-per-packet capacities, and compatible wire formats. |
 
-## Jailbreak / transforms
+## Jailbreak / composers
 
 | Tool | Description |
 | --- | --- |
@@ -79,6 +79,16 @@ Every tool takes JSON args and returns a JSON-serialized string. Image/text file
 | `stegg_jailbreak_detect` | Scan an image or text file for jailbreak / prompt-injection indicators across all vectors (filename, PNG metadata chunks, LSB pixel payload, trailing data after IEND, Unicode obfuscation, fullwidth-ASCII density). |
 | `stegg_jailbreak_list` | List available jailbreak templates with metadata (technique class, target models, tags). |
 | `stegg_transforms_list` | List registered text transforms from transforms_core — the set of names accepted by the `obfuscation` parameter on the jailbreak compose_text / compose_unicode_tag tools. |
+
+## Text transforms
+
+| Tool | Description |
+| --- | --- |
+| `stegg_auto_decode` | Run the universal auto-decoder — try every detector-firing transform and return the top-K candidates ranked by priority and printability confidence. |
+| `stegg_decode_transform` | Decode text through a transform's reverse. |
+| `stegg_encode_transform` | Encode text through one transform. |
+| `stegg_inspect_transform` | Return full metadata for one transform (name, slug, category, priority, description, configurable_options, capability flags). |
+| `stegg_list_transforms` | List every registered text transform (ciphers, encodings, unicode, concealment, ...). |
 
 ## Knowledge (records + prose corpus)
 
@@ -112,6 +122,49 @@ Notes:
 - `cyrillic_homoglyph` (Latin letter ↔ Cyrillic twin) and every other method except `cjk_homoglyph` and `capitalization` are round-trip-compatible with the browser Text Lab in `index.html`; the browser exposes `cyrillic_homoglyph` as `homoglyph`. `cjk_homoglyph` (ASCII punctuation ↔ CJK/fullwidth twin) and `capitalization` are Python-only.
 - `braille`, `emoji`, `skintone` append the payload as its own block after the cover (separated by `\n\n`) — visibly perturbed, not invisible.
 - Length-prefixed methods (`cyrillic_homoglyph`, `cjk_homoglyph`, `whitespace`, `variation`, `combining`, `confusable`, `hangul`, `mathbold`, `capitalization`) raise `TextStegCapacityError` on undersized covers — use `stegg_text_capacity` first when the cover might be too small.
+
+## Text transforms (transform tools)
+
+Distinct from text steg — reversible reshaping of a bare string, no
+cover/secret. Registered in `m3gast3gg.core.transforms`; 20 transforms
+across 6 categories. Every transform carries a name, slug, category,
+priority (0–310), `func` (encode), `reverse` (decode when
+`can_decode=True`), optional `detector`, and typed
+`configurable_options`.
+
+| Slug | Category | Priority | Options |
+| --- | --- | --- | --- |
+| `atbash`, `caesar`, `rot13`, `vigenere` | cipher | 60 | `caesar.shift` (int 1–25, default 3); `vigenere.key` (text, default `SECRET`) |
+| `base64`, `base32` | encoding | 270, 280 | — |
+| `hex` | encoding | 290 | — |
+| `binary` | encoding | 300 | — |
+| `ternary`, `ascii85`, `url`, `quoted-printable` | encoding | 70 | — |
+| `morse` | encoding | 300 | — (lossy: strips case + unmapped punct) |
+| `fullwidth`, `zalgo` | unicode | 85 | `zalgo.intensity` (int 1–10, default 3) |
+| `homoglyph` | concealment | 100 | — |
+| `invisible-text`, `zero-width` | concealment | 1 | `zero-width.cover` (text, default `"carrier text"`) |
+| `reverse` | format | 50 | — |
+| `leetspeak` | visual | 50 | `leetspeak.intensity` (int 1–3, default 2) |
+
+**Priority zones** (`stegg_auto_decode` ranks by priority DESC, then
+confidence): 300 = exclusive-alphabet decodable (Binary, Morse); 290 =
+Hex; 280 = Base32; 270 = Base64; 100 = high-confidence Unicode
+signature (Homoglyph); 85 = Unicode-styling default; 70 = common
+encodings; 60 = ciphers; 50 = generic; 1 = concealment (last-resort).
+
+**Detector-free by design**: `caesar`, `rot13`, `atbash`, `vigenere`,
+`reverse`, `ascii85` (partial). Ciphers look like plain letters —
+auto-firing them would flood output. Pass them by name to
+`stegg_decode_transform` when suspected.
+
+**Lossy transforms**: `leetspeak` (ASCII collision: `l` ↔ `i` both hit
+`1`), `morse` (no case, unmapped chars dropped). Round-trip tests
+allowlist these under `LOSSY_TRANSFORMS`.
+
+**Bridges**: `homoglyph`, `invisible-text`, `zero-width` under
+`concealment/` wrap the steg primitives in `m3gast3gg.core.text` and
+`m3gast3gg.core.unicode_tags` so they fit the single-arg transform
+contract (`func(text) -> str`).
 
 ## Knowledge base
 

@@ -258,6 +258,32 @@ PDF (metadata streams + XMP + post-EOF), HTML (comments + hidden elements + data
 ### Code Techniques
 Python, JavaScript, C, CSS, Shell, SQL, LaTeX — all with steganographic comments, hex byte tables, zero-width docstrings, and per-byte calibration entries.
 
+### Text Transformations (reversible reshaping, not hiding)
+
+Distinct from text steganography: text transforms *reshape input visibly*
+(ROT13, Base64, homoglyph) instead of *hiding a payload invisibly* in a
+carrier. Useful for CTFs, jailbreak-obfuscation chains, and as pipeline
+stages upstream of steg. 20 registered transforms across 6 categories:
+
+- **cipher** (4): `caesar`, `rot13`, `atbash`, `vigenere` — classical ciphers, not encryption.
+- **encoding** (9): `base64`, `base32`, `hex`, `binary`, `ternary`, `ascii85`, `morse`, `url`, `quoted-printable`.
+- **concealment** (3): `homoglyph`, `invisible-text` (Unicode Tag), `zero-width` (ZWJ/ZWSP/ZWNJ bridge to `core.text`).
+- **unicode** (2): `fullwidth`, `zalgo`.
+- **format** (1): `reverse`.
+- **visual** (1): `leetspeak`.
+
+```bash
+stegg transform list                                # every transform, grouped
+stegg transform encode caesar --text "Attack" --option shift=5
+stegg transform decode base64 --text "SGVsbG8="
+stegg transform auto-decode --text "SGVsbG8sIFdvcmxkIQ=="   # universal decoder
+```
+
+Same surface over MCP: `stegg_list_transforms`, `stegg_inspect_transform`,
+`stegg_encode_transform`, `stegg_decode_transform`, `stegg_auto_decode`.
+See [`docs/standard.md#transforms-vs-steg`](docs/standard.md#transforms-vs-steg)
+for the transforms-vs-steg framing.
+
 > *⊰•-•✧ See the full catalog: [`examples/README.md`](examples/README.md) ✧•-•⊱*
 
 ---
@@ -436,7 +462,8 @@ M3GA-ST3GG/
 │   │   ├── text.py           # text/emoji encode/decode (14 methods)
 │   │   ├── analysis.py       # 264+ detection/analysis functions
 │   │   ├── crypto.py         # optional AES-256-GCM
-│   │   ├── transforms.py     # zalgo/leetspeak/fullwidth for pre-obfuscation
+│   │   ├── transforms/       # text transforms (cipher/encoding/unicode/concealment/format/visual)
+│   │   ├── decoder.py        # universal auto-decoder over the transforms registry
 │   │   ├── jailbreak.py      # multi-vector prompt-injection composer
 │   │   ├── audio.py, network.py, pdf.py, metadata.py, matryoshka.py, …
 │   │   └── f5/               # F5 JPEG DCT (Python port of the JS reference)
