@@ -188,6 +188,24 @@ Distinct surface from text-*steg*. Transforms reshape an input string into anoth
 
 Framing separation is in `docs/standard.md#transforms-vs-steg`. When the user's task ends in a stego wrap, use transforms as pipeline stages upstream of `stegg_text_encode` / `stegg_jailbreak_compose_text`; don't try to make one API do both.
 
+### Text-transform triage — read the shape first
+
+Before dispatching by name, glance at what the input *looks* like. This table routes from observable shape to the transform category worth trying. **First move when shape is ambiguous: `stegg transform auto-decode`** — the detector-gated sweep walks every registered transform and ranks candidates by priority + printability.
+
+| Shape you see                                                  | Category                | Dispatch |
+|----------------------------------------------------------------|-------------------------|----------|
+| Base-N alphabet (`A-Z2-7=`, `A-Za-z0-9+/=`, `0-9a-f`, `%XX`, `=XX`, `<~…~>`, `1-9A-HJ-NP-Za-km-z`) | encoding                | `stegg transform auto-decode` |
+| 0/1 in 8-bit groups, or dots-and-dashes                        | encoding (binary/morse) | `stegg transform auto-decode` |
+| Plain letters that spell nothing — shifted-alphabet feel       | cipher                  | `stegg transform decode {caesar,rot13,atbash,vigenere}` by name — ciphers have `detector=None` and won't surface from auto-decode |
+| A/B (or •/■) pattern in groups of 5                            | cipher (bacon)          | `stegg transform decode bacon` |
+| Fullwidth-shaped Latin, or letters buried under stacked diacritics | unicode-style       | `stegg transform auto-decode` |
+| Cyrillic/CJK glyphs mixed into ASCII, NFKC-fragile             | concealment (homoglyph) | `stegg transform decode homoglyph` |
+| Zero-width chars between visible glyphs, or interword whitespace patterns | text-steg (not a transform) | `stegg_text_steg_message` — this is steg, not a transform |
+| Reads backwards; or numbers/symbols substituted for letters    | format / visual         | `stegg transform decode {reverse,leetspeak}` |
+| Case-only weirdness (ALL CAPS, all lower, Title Case)          | case                    | `stegg transform decode {uppercase,lowercase,titlecase}` — mostly pipeline-stage utility |
+
+Ciphers deliberately opt out of `auto-decode` because their output is indistinguishable from plain letters. Try them by name; for unknown-shift Caesar, sweep `--option shift=N` across 1..25.
+
 ### Interpreting image triage verdicts
 
 Triage's verdict labels are `SUSPICIOUS`, `INCONCLUSIVE`, and `CLEAN`. These are signal-report labels, not your response verdict. Translate them:
