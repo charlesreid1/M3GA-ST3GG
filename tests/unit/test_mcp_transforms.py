@@ -8,6 +8,7 @@ import pytest
 
 from m3gast3gg.mcp.transforms import (
     execute_auto_decode,
+    execute_chain_transforms,
     execute_decode_transform,
     execute_encode_transform,
     execute_inspect_transform,
@@ -128,6 +129,77 @@ def test_registry_wired_into_mcp():
     from m3gast3gg.mcp import TOOL_EXECUTORS, TOOL_SCHEMAS
     for name in ("stegg_list_transforms", "stegg_inspect_transform",
                  "stegg_encode_transform", "stegg_decode_transform",
+                 "stegg_chain_transforms",
                  "stegg_auto_decode"):
         assert name in TOOL_EXECUTORS, f"executor missing: {name}"
         assert name in TOOL_SCHEMAS, f"schema missing: {name}"
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_encode_pipeline():
+    raw = await execute_chain_transforms(
+        text="Attack",
+        steps=[
+            {"name": "caesar", "action": "encode", "options": {"shift": 5}},
+            {"name": "base64", "action": "encode"},
+        ],
+    )
+    payload = json.loads(raw)
+    assert payload["output"] == "Rnl5Zmhw"
+    assert len(payload["steps"]) == 2
+    assert payload["steps"][0]["transform"] == "caesar"
+    assert payload["steps"][1]["transform"] == "base64"
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_roundtrip():
+    """encode(caesar → base64) then decode(base64 → caesar) recovers input."""
+    forward = await execute_chain_transforms(
+        text="Attack",
+        steps=[
+            {"name": "caesar", "options": {"shift": 5}},
+            {"name": "base64"},
+        ],
+    )
+    mid = json.loads(forward)["output"]
+    reverse = await execute_chain_transforms(
+        text=mid,
+        steps=[
+            {"name": "base64", "action": "decode"},
+            {"name": "caesar", "action": "decode", "options": {"shift": 5}},
+        ],
+    )
+    assert json.loads(reverse)["output"] == "Attack"
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_empty_steps_error():
+    raw = await execute_chain_transforms(text="hi", steps=[])
+    assert "error" in json.loads(raw)
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_unknown_transform_error():
+    raw = await execute_chain_transforms(
+        text="hi", steps=[{"name": "no-such"}],
+    )
+    payload = json.loads(raw)
+    assert "error" in payload
+    assert "unknown transform" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_bad_action_error():
+    raw = await execute_chain_transforms(
+        text="hi", steps=[{"name": "base64", "action": "wat"}],
+    )
+    assert "error" in json.loads(raw)
+
+
+@pytest.mark.asyncio
+async def test_chain_transforms_bad_option_error():
+    raw = await execute_chain_transforms(
+        text="hi",
+        steps=[{"name": "caesar", "options": {"shift": 999}}],
+    )
+    assert "error" in json.loads(raw)

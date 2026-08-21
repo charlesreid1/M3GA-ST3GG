@@ -125,3 +125,57 @@ def test_transform_decode_encode_only_exits_2():
     r = runner.invoke(app, ["--json", "transform", "decode", "no-such-transform",
                             "--text", "x"])
     assert r.exit_code == 2
+
+
+def test_transform_chain_encode_pipeline():
+    r = runner.invoke(app, [
+        "--json", "transform", "chain",
+        "--text", "Attack",
+        "--step", "caesar shift=5",
+        "--step", "base64",
+    ])
+    assert r.exit_code == 0, r.stdout
+    payload = _json(r)
+    assert payload["output"] == "Rnl5Zmhw"
+    assert [s["transform"] for s in payload["steps"]] == ["caesar", "base64"]
+
+
+def test_transform_chain_roundtrip():
+    r = runner.invoke(app, [
+        "--json", "transform", "chain",
+        "--text", "Attack",
+        "--step", "caesar shift=5",
+        "--step", "base64",
+    ])
+    mid = _json(r)["output"]
+    r2 = runner.invoke(app, [
+        "--json", "transform", "chain",
+        "--text", mid,
+        "--step", "decode:base64",
+        "--step", "decode:caesar shift=5",
+    ])
+    assert r2.exit_code == 0, r2.stdout
+    assert _json(r2)["output"] == "Attack"
+
+
+def test_transform_chain_no_steps_exits_2():
+    r = runner.invoke(app, ["--json", "transform", "chain", "--text", "hi"])
+    assert r.exit_code == 2
+
+
+def test_transform_chain_unknown_transform_exits_2():
+    r = runner.invoke(app, [
+        "--json", "transform", "chain",
+        "--text", "hi",
+        "--step", "no-such-transform",
+    ])
+    assert r.exit_code == 2
+
+
+def test_transform_chain_bad_option_grammar_exits_2():
+    r = runner.invoke(app, [
+        "--json", "transform", "chain",
+        "--text", "hi",
+        "--step", "caesar bogus_no_equals",
+    ])
+    assert r.exit_code == 2

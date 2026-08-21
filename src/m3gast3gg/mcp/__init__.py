@@ -53,6 +53,7 @@ from .text import (  # noqa: F401
 )
 from .transforms import (  # noqa: F401
     execute_auto_decode,
+    execute_chain_transforms,
     execute_decode_transform,
     execute_encode_transform,
     execute_inspect_transform,

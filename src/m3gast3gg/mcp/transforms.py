@@ -215,6 +215,66 @@ async def execute_decode_transform(
     return truncate_json(result)
 
 
+async def execute_chain_transforms(
+    text: Any = None,
+    steps: Any = None,
+    **_kw,
+) -> str:
+    def work():
+        text_ok, err = _check_text(text)
+        if err:
+            return {"error": err}
+        if not isinstance(steps, list) or not steps:
+            return {"error": "steps: must be a non-empty list"}
+        current = text_ok
+        trace: list[dict] = []
+        for i, step in enumerate(steps):
+            if not isinstance(step, dict):
+                return {"error": f"step[{i}]: must be an object"}
+            name = step.get("name")
+            action = step.get("action", "encode")
+            options = step.get("options")
+            if not isinstance(name, str) or not name:
+                return {"error": f"step[{i}].name: required string"}
+            if action not in ("encode", "decode"):
+                return {"error": f"step[{i}].action: must be 'encode' or 'decode'"}
+            t = registry.get_optional(name)
+            if t is None:
+                return {"error": f"step[{i}]: unknown transform {name!r}"}
+            if action == "decode" and t.reverse is None:
+                return {"error": f"step[{i}]: {t.name} has can_decode=False"}
+            opts, err = _validate_options(t, options)
+            if err:
+                return {"error": f"step[{i}]: {err}"}
+            fn = t.func if action == "encode" else t.reverse
+            try:
+                current = fn(current, **opts)
+            except Exception as exc:
+                return {"error": f"step[{i}] {t.name} {action} failed: {exc}"}
+            trace.append({
+                "index": i,
+                "transform": t.slug,
+                "action": action,
+                "options": opts,
+                "output_length": len(current),
+            })
+        return {
+            "input_length": len(text_ok),
+            "output": current,
+            "output_length": len(current),
+            "steps": trace,
+        }
+
+    try:
+        result = await run_sync(work)
+    except asyncio.TimeoutError:
+        return f"stegg_chain_transforms timed out after {TOOL_TIMEOUT}s"
+    except Exception as exc:
+        logger.exception("chain_transforms failed")
+        return f"stegg_chain_transforms error: {exc}"
+    return truncate_json(result)
+
+
 async def execute_auto_decode(
     text: Any = None,
     top_k: int = 5,
@@ -253,6 +313,7 @@ EXECUTORS = {
     "stegg_inspect_transform": execute_inspect_transform,
     "stegg_encode_transform": execute_encode_transform,
     "stegg_decode_transform": execute_decode_transform,
+    "stegg_chain_transforms": execute_chain_transforms,
     "stegg_auto_decode": execute_auto_decode,
 }
 
@@ -315,6 +376,36 @@ SCHEMAS = {
                 "options": {"type": "object"},
             },
             "required": ["name", "text"],
+        },
+    },
+    "stegg_chain_transforms": {
+        "description": (
+            "Run an ordered pipeline of transforms over one input. Each step "
+            "is {name, action, options} with action ∈ {encode, decode}. "
+            "Useful for stacking obfuscation stages (e.g. caesar → base64 → "
+            "zero-width). Returns the final output plus a per-step trace."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "steps": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "action": {"type": "string",
+                                        "enum": ["encode", "decode"],
+                                        "default": "encode"},
+                            "options": {"type": "object"},
+                        },
+                        "required": ["name"],
+                    },
+                },
+            },
+            "required": ["text", "steps"],
         },
     },
     "stegg_auto_decode": {

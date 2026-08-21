@@ -2371,6 +2371,88 @@ def transform_auto_decode_cmd(
     console.print(table)
 
 
+def _parse_step(raw: str) -> tuple[str, str, List[str]]:
+    """Parse one --step token.
+
+    Grammar: ``[decode:]NAME [KEY=VALUE ...]``. Whitespace-separated. Missing
+    NAME or malformed KEY=VALUE exits 2.
+    """
+    tokens = raw.split()
+    if not tokens:
+        error("--step: empty step")
+        raise typer.Exit(2)
+    head = tokens[0]
+    action = "encode"
+    if head.startswith("decode:"):
+        action = "decode"
+        head = head[len("decode:"):]
+    elif head.startswith("encode:"):
+        head = head[len("encode:"):]
+    if not head:
+        error(f"--step {raw!r}: missing transform name")
+        raise typer.Exit(2)
+    for kv in tokens[1:]:
+        if "=" not in kv:
+            error(f"--step {raw!r}: option {kv!r} must be KEY=VALUE")
+            raise typer.Exit(2)
+    return head, action, tokens[1:]
+
+
+@transform_app.command("chain")
+def transform_chain_cmd(
+    ctx: typer.Context,
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="Input text (or pipe stdin)"),
+    step: List[str] = typer.Option(
+        [],
+        "--step",
+        help="Pipeline step 'NAME [KEY=VALUE ...]', optionally prefixed 'decode:'. Repeatable.",
+    ),
+):
+    """Run an ordered pipeline of transforms. Each --step is 'NAME [key=value ...]';
+    prefix with 'decode:' to run the reverse. Steps run left-to-right."""
+    from m3gast3gg.core.transforms import registry
+    json_mode = ctx.obj.get("json_mode", False)
+    if not step:
+        error("--step: at least one step required")
+        raise typer.Exit(2)
+    input_text = _read_text_arg(text)
+    current = input_text
+    trace: list[dict] = []
+    for i, raw in enumerate(step):
+        name, action, kvs = _parse_step(raw)
+        t = registry.get_optional(name)
+        if t is None:
+            error(f"step[{i}]: no transform registered as {name!r}")
+            raise typer.Exit(2)
+        if action == "decode" and t.reverse is None:
+            error(f"step[{i}]: {t.name} has can_decode=False; nothing to reverse")
+            raise typer.Exit(2)
+        kwargs = _parse_options(kvs, t)
+        fn = t.func if action == "encode" else t.reverse
+        try:
+            current = fn(current, **kwargs)
+        except Exception as exc:
+            error(f"step[{i}] {t.name} {action} failed: {exc}")
+            raise typer.Exit(1)
+        trace.append({
+            "index": i,
+            "transform": t.slug,
+            "action": action,
+            "options": kwargs,
+            "output_length": len(current),
+        })
+    if json_mode:
+        _out_json({
+            "input_length": len(input_text),
+            "output": current,
+            "output_length": len(current),
+            "steps": trace,
+        })
+    sys.stdout.write(current)
+    if not current.endswith("\n"):
+        sys.stdout.write("\n")
+
+
 @transform_app.command("categories")
 def transform_categories_cmd(ctx: typer.Context):
     """List transform categories with counts."""
